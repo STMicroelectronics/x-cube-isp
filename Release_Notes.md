@@ -1,4 +1,4 @@
-# Release Notes for X-CUBE-ISP v1.1.0
+# Release Notes for X-CUBE-ISP
 Copyright &copy; 2025 STMicroelectronics
 
 ## Purpose
@@ -30,9 +30,32 @@ the board.
 - Embedded Auto White Balance algorithm (AWB)
 - STM32 ISP IQTune application
 
+## Software components
+| Name                         | Version
+|-----                         | -------
+| CMSIS                        | v5.9.0
+| STM32N6xx CMSIS Device       | v1.2.0
+| STM32N6xx HAL/LL Drivers     | v1.2.0
+| STM32N6570-DK BSP Drivers    | v1.2.0
+| BSP Component aps256xx       | v1.0.6
+| BSP Component Common         | v7.3.0
+| BSP Component mx66uw1g45g    | v1.1.0
+| BSP Component rk050hr18      | v1.0.1
+| STM32 Camera Middleware      | v1.4.2
+| STM32 USB Device Library     | v2.11.3
+| STM32 ISP Library            | v1.2.0
+| ISP IQTune application       | v1.3.0
+
 ## Update history
 
-### Enhancements, new features
+### V1.2.0 / July 2025
+- Update STM32N6 HAL, CMSI and BSP to the version 1.2.0
+- Support unique Gamma
+- Fix support of MacOS
+- Fix memory issues for 5Mp sensor
+- Fix build warnings
+
+### V1.1.0 / July 2025
 - Update STM32N6 HAL, CMSI and BSP to the version 1.1.0
 - Add sensor delay feature that can be manually set or automaticaly computed thanks to the STM32-ISP-IQTune desktop application
 - Improve AWB algorithm to avoid flickering between 2 illuminants
@@ -40,21 +63,5 @@ the board.
 - Statistic area has been remove from init parameter of the ISP_Init() function
 - Fix IAR build warnings in the evision libraries
 
-### Limitations
-- None
-
-## Software components
-| Name                         | Version
-|-----                         | -------
-| CMSIS                        | v5.9.0
-| STM32N6xx CMSIS Device       | v1.1.0
-| STM32N6xx HAL/LL Drivers     | v1.1.0
-| STM32N6570-DK BSP Drivers    | v1.1.0
-| BSP Component aps256xx       | v1.0.6
-| BSP Component Common         | v7.3.0
-| BSP Component mx66uw1g45g    | v1.1.0
-| BSP Component rk050hr18      | v1.0.1
-| STM32 Camera Middleware      | v1.4.1
-| STM32 USB Device Library     | v2.11.3
-| STM32 ISP Library            | v1.1.0
-| ISP IQTune application       | v1.1.0
+### V1.0.0 / December 2024
+ - Initial release

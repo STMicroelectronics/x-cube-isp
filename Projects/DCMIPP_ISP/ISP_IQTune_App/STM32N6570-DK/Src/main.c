@@ -80,8 +80,7 @@ typedef struct
 
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
 /* Dump frame buffer */
-#define MAX_DUMP_BUFFER_WIDTH  2592
-#define MAX_DUMP_BUFFER_HEIGHT 1944
+#define MAX_DUMP_BUFFER_SIZE (5 * 1024 * 1024) /* 5 MP */
 #endif  /* ISP_MW_TUNING_TOOL_SUPPORT */
 
 /* Private macro -------------------------------------------------------------*/
@@ -98,7 +97,7 @@ uint8_t Main_DestBuffer[MAX_PREVIEW_BUFFER_WIDTH * MAX_PREVIEW_BUFFER_HEIGHT * B
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
 __attribute__ ((section (".psram_bss")))
 __attribute__ ((aligned (32)))
-uint8_t Dump_DestBuffer[MAX_DUMP_BUFFER_WIDTH * MAX_DUMP_BUFFER_HEIGHT * BPP_RGB888];
+uint8_t Dump_DestBuffer[MAX_DUMP_BUFFER_SIZE * BPP_RGB888];
 extern uint32_t ISP_AncillaryPipe_FrameCount;
 extern uint32_t ISP_DumpPipe_FrameCount;
 #endif  /* ISP_MW_TUNING_TOOL_SUPPORT */
@@ -252,9 +251,9 @@ int main(void)
   printf("INFO: Decimation factor is: %d\r\n", DecimationFactor);
 
   /* Configure the IPPlug Fifo size for each pipe */
-  ret = SetIPPlugConf(MAX_DUMP_BUFFER_WIDTH, Camera_SensorConf.BytePerPixel,
+  ret = SetIPPlugConf(Camera_SensorConf.CamImgWidth, Camera_SensorConf.BytePerPixel,
                       Camera_SensorConf.PreviewWidth, BPP_RGB888,
-                      MAX_DUMP_BUFFER_WIDTH, BPP_RGB888);
+                      Camera_SensorConf.CamImgWidth, BPP_RGB888);
   if (ret != ISP_OK)
   {
     printf("ERROR: Can't configure IPPlug (error %d)\r\n", ret);
@@ -796,6 +795,9 @@ ISP_StatusTypeDef Camera_StartPreview(void *pDcmipp)
     return ISP_OK;
   }
 
+  /* Enable Layer 2 */
+  BSP_LCD_SetLayerVisible(0,LTDC_LAYER_2, ENABLE);
+
   if ((pHdcmipp->ErrorCode != 0) || (pHdcmipp->State != HAL_DCMIPP_STATE_READY))
   {
     /* Overrun run may occur just before the pipeline is started: clear the error */
@@ -831,6 +833,9 @@ ISP_StatusTypeDef Camera_StopPreview(void *pDcmipp)
   {
     return ISP_ERR_DCMIPP_STOP;
   }
+
+  /* Disable Layer 2 to avoid refresh from XSPI memory*/
+  BSP_LCD_SetLayerVisible(0,LTDC_LAYER_2, DISABLE);
 
   if ((pHdcmipp->ErrorCode != 0) || (pHdcmipp->State != HAL_DCMIPP_STATE_READY))
   {
@@ -874,7 +879,7 @@ ISP_StatusTypeDef Camera_DumpFrame(void *pDcmipp, uint32_t Pipe, ISP_DumpCfgType
       DCMIPP_Pipe2Config_DumpIspRGB888();
 
       /* Maximize IPPlug Fifo size for Ancillary pipe */
-      if (SetIPPlugConf(0, 0, 0, 0, MAX_DUMP_BUFFER_WIDTH, BPP_RGB888) != ISP_OK)
+      if (SetIPPlugConf(0, 0, 0, 0, Camera_SensorConf.CamImgWidth, BPP_RGB888) != ISP_OK)
       {
         return ISP_ERR_DCMIPP_CONFIGPIPE;
       }
@@ -908,9 +913,9 @@ ISP_StatusTypeDef Camera_DumpFrame(void *pDcmipp, uint32_t Pipe, ISP_DumpCfgType
     }
 
     /* Restore IPPlug Fifo size for each pipe */
-    if (SetIPPlugConf(MAX_DUMP_BUFFER_WIDTH, Camera_SensorConf.BytePerPixel,
+    if (SetIPPlugConf(Camera_SensorConf.CamImgWidth, Camera_SensorConf.BytePerPixel,
                       Camera_SensorConf.PreviewWidth, BPP_RGB888,
-                      MAX_DUMP_BUFFER_WIDTH, BPP_RGB888) != ISP_OK)
+                      Camera_SensorConf.CamImgWidth, BPP_RGB888) != ISP_OK)
     {
       return ISP_ERR_DCMIPP_CONFIGPIPE;
     }
@@ -934,7 +939,7 @@ ISP_StatusTypeDef Camera_DumpFrame(void *pDcmipp, uint32_t Pipe, ISP_DumpCfgType
     }
 
     /* Maximize IPPlug Fifo size for dump pipe */
-    if (SetIPPlugConf(MAX_DUMP_BUFFER_WIDTH, Camera_SensorConf.BytePerPixel, 0, 0, 0, 0) != ISP_OK)
+    if (SetIPPlugConf(Camera_SensorConf.CamImgWidth, Camera_SensorConf.BytePerPixel, 0, 0, 0, 0) != ISP_OK)
     {
       return ISP_ERR_DCMIPP_CONFIGPIPE;
     }
@@ -965,9 +970,9 @@ ISP_StatusTypeDef Camera_DumpFrame(void *pDcmipp, uint32_t Pipe, ISP_DumpCfgType
     pMeta->format = (ISP_FormatTypeDef) (Camera_SensorConf.SensorDataType - DCMIPP_DT_RAW8 + 1);
 
     /* Restore IPPlug Fifo size for each pipe */
-    if (SetIPPlugConf(MAX_DUMP_BUFFER_WIDTH, Camera_SensorConf.BytePerPixel,
+    if (SetIPPlugConf(Camera_SensorConf.CamImgWidth, Camera_SensorConf.BytePerPixel,
                       Camera_SensorConf.PreviewWidth, BPP_RGB888,
-                      MAX_DUMP_BUFFER_WIDTH, BPP_RGB888) != ISP_OK)
+                      Camera_SensorConf.CamImgWidth, BPP_RGB888) != ISP_OK)
     {
       return ISP_ERR_DCMIPP_CONFIGPIPE;
     }
@@ -1062,7 +1067,7 @@ void Display_Config()
   /* Initialize the buffer (grey color) */
   uint32_t buffer_size = Camera_SensorConf.PreviewWidth * Camera_SensorConf.PreviewHeight * BPP_RGB888;
   memset(Main_DestBuffer, 0x88, buffer_size);
-  SCB_CleanDCache_by_Addr (Main_DestBuffer, buffer_size);
+  SCB_CleanDCache_by_Addr (Main_DestBuffer, (int32_t)buffer_size);
 
   BSP_LCD_ConfigLayer(0, LTDC_LAYER_1, &config);
 
@@ -1293,7 +1298,7 @@ int __write(int fd, char * ptr, int len)
 int _write(int fd, char * ptr, int len)
 {
   UNUSED(fd);
-  HAL_UART_Transmit(&huart1, (uint8_t *) ptr, len, ~0);
+  HAL_UART_Transmit(&huart1, (uint8_t *) ptr, (uint16_t)len, ~(uint32_t)0);
   return len;
 }
 #endif /* (__GNUC__) */

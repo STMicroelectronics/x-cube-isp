@@ -1,6 +1,6 @@
 # X-CUBE-ISP
 
-![latest tag](https://img.shields.io/github/v/tag/STMicroelectronics/x-cube-isp.svg)
+![latest tag](https://img.shields.io/badge/tag-1.2.0-blue)
 
 The X-CUBE-ISP package provides the functionnality to control and tune the
 DCMIPP ISP present in the STM32N6x products.<br>
@@ -23,23 +23,6 @@ the board.
 ![STM32N6_connection](STM32N6_connection_IQTune_STLink.png)
 
 [Getting started with X-CUBE-ISP Wiki article](https://wiki.st.com/stm32mcu/wiki/ISP:Getting_started_with_X-CUBE-ISP)
-
-## How to use
-
-This repository has been created using the `git submodule` command. Please check the instructions below for proper use. Please check also **the notes at the end of this section** for further information.
-
-1. To **clone** this repository along with the linked submodules, option `--recursive` has to be specified as shown below.
-
-```bash
-git clone --recursive https://github.com/STMicroelectronics/x-cube-isp.git
-```
-
-2. To get the **latest updates**, in case this repository is **already** on your local machine, issue the following **two** commands (with this repository as the **current working directory**).
-
-```bash
-git pull
-git submodule update --init --recursive
-```
 
 ## Table of Contents
 
@@ -112,12 +95,9 @@ host computer and connected through usb.
 Applications is available for MB1939 STM32N6570-DK board.
 
   1. Toggle BOOT1 switch to right position
-  2. Program `X-CUBE-ISP/Projects/DCMIPP_ISP/Bin/STM32N6_ISP_IQTune_App-v1.0.0-trusted.bin`
+  2. Program `X-CUBE-ISP/Projects/DCMIPP_ISP/Bin/STM32N6_ISP_IQTune_App-v1.0.0-trusted.bin` as described in [Program bin files using command line](#program-bin-files-using-command-line)
   3. Toggle BOOT0 and BOOT1 switch to left position
   4. Reset board
-
-Note:<br>
-- To program the signed binary follow the steps described in [Program bin files using command line](#program-bin-files-using-command-line)
 
 
 ## Quickstart using source code
@@ -145,7 +125,7 @@ Note:<br>
 Make sure the STM32CubeProgrammer bin folder is added to your path.
 
 ```bash
-STM32MP_SigningTool_CLI -bin STM32CubeIDE/release/STM32N6_ISP_IQTune_App.bin -nk -t fsbl -hv 2.3 -o STM32N6_ISP_IQTune_App-trusted.bin
+STM32_SigningTool_CLI -bin STM32CubeIDE/release/STM32N6_ISP_IQTune_App.bin -nk -t fsbl -hv 2.3 -o STM32N6_ISP_IQTune_App-trusted.bin
 ```
 
 ### Program bin files using command line

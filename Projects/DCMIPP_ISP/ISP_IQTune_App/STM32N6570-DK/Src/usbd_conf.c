@@ -44,6 +44,7 @@ PCD_HandleTypeDef hpcd_CDC;
   */
 void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd)
 {
+  UNUSED(hpcd);
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   int ret;
 
@@ -65,7 +66,7 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd)
   {
     volatile uint32_t *USBPHYC_CR = (uint32_t *) USB1_HS_PHYC_BASE_S;
 
-    *USBPHYC_CR &= ~0x00000070; /* clear FSEL */
+    *USBPHYC_CR &= ~(uint32_t)0x00000070; /* clear FSEL */
     *USBPHYC_CR |= (2 << 4); /* Set FSEL to 24 Mhz */
 
     HAL_Delay(2);
@@ -87,6 +88,8 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd)
   */
 void HAL_PCD_MspDeInit(PCD_HandleTypeDef *hpcd)
 {
+  UNUSED(hpcd);
+
   __HAL_RCC_USB1_OTG_HS_CLK_DISABLE();
   __HAL_RCC_USB1_OTG_HS_FORCE_RESET();
 }

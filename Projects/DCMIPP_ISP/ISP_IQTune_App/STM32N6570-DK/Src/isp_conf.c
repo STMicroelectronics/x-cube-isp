@@ -67,6 +67,8 @@ void CMW_CAMERA_PIPE_FrameEventCallback(uint32_t Pipe)
     case DCMIPP_PIPE2 :
       ISP_IncAncillaryFrameId(&hIsp);
       break;
+    default:
+      break;
   }
   /* Additional applicative processing can be implemented from here */
 }

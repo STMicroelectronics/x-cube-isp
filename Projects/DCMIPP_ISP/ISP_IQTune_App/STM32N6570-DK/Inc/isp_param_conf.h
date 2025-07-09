@@ -73,7 +73,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     },
     .AWBAlgo = {
         .enable = 1,
-        .id = { "JudegeII-A", "JudegeII-TL84", "JudgeII-D65", "Free Slot", "Free Slot", },
+        .id = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "Free Slot", "Free Slot", },
         .referenceColorTemp = { 2810, 4015, 6650, 0, 0, },
         .ispGainR = { 137000000, 182000000, 244000000, 0, 0, },
         .ispGainG = { 100000000, 100000000, 100000000, 0, 0, },
@@ -105,8 +105,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
         .YSize = 972,
     },
     .gamma = {
-        .enablePipe1 = 1,
-        .enablePipe2 = 1,
+        .enable = 1,
     },
     .sensorDelay = {
         .delay = 3,
@@ -124,6 +123,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     .AECAlgo = {
         .enable = 1,
         .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
+        .antiFlickerFreq = 0,
     },
     .statRemoval = {
         .enable = 0,
@@ -164,15 +164,15 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     },
     .AWBAlgo = {
         .enable = 1,
-        .id = { "MiniLBox A", "MiniLBox TL84", "MiniLBox D65", "", "", },
-        .referenceColorTemp = { 2665, 3750, 6140, 0, 0, },
-        .ispGainR = { 76000000, 95000000, 131000000, 0, 0, },
+        .id = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "", "", },
+        .referenceColorTemp = { 2750, 4150, 6750, 0, 0, },
+        .ispGainR = { 95000000, 117000000, 156000000, 0, 0, },
         .ispGainG = { 100000000, 100000000, 100000000, 0, 0, },
-        .ispGainB = { 218000000, 176000000, 146000000, 0, 0, },
+        .ispGainB = { 238000000, 189000000, 150000000, 0, 0, },
         .coeff = {
-            { { 157610000, 24710000, -88570000, }, { -65040000, 228120000, -32820000, }, { -26150000, -64259999, 325760000, }, },
-            { { 178910000, 5470000, -59790000, }, { -56100000, 225870000, -36100000, }, { -12980000, -55660000, 262750000, }, },
-            { { 188870000, -8850000, -41010000, }, { -42130000, 203070000, -37570000, }, { -6360000, -50460000, 216580000, }, },
+            { { 133939999, -20660000, -31280000, }, { -37890000, 149680000, -26179999, }, { 2040000, -89240000, 221830000, }, },
+            { { 147680000, -38330000, -29360000, }, { -40320000, 146010000, -31400000, }, { 1100000, -61240000, 174790000, }, },
+            { { 146010000, -39280000, -14060000, }, { -26750000, 152490000, -42520000, }, { 1160000, -55410000, 143910000, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
         },
@@ -196,8 +196,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
         .YSize = 682,
     },
     .gamma = {
-        .enablePipe1 = 1,
-        .enablePipe2 = 1,
+        .enable = 1,
     },
     .sensorDelay = {
         .delay = 4,
