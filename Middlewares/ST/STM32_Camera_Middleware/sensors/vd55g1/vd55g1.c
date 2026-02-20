@@ -20,15 +20,18 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include "vd55g1_patch_cut_1.c"
 #include "vd55g1_patch_cut_2.c"
 
 #define VD55G1_REG_MODEL_ID                           0x0000
-  #define VD55G1_MODEL_ID                             0x53354731
+  #define VD55G1_MODEL_ID_VD55G1                      0x53354731
+  #define VD55G1_MODEL_ID_VDx5G4                      0x53354733
 #define VD55G1_REG_REVISION                           0x0004
-  #define VD55G1_REVISION_CUT_1                       0x1010
   #define VD55G1_REVISION_CUT_2                       0x2020
+  #define VD55G1_REVISION_CUT_3                       0x3030
 #define VD55G1_REG_ROM_REVISION                       0x0008
+#define VD55G1_REG_OPTICAL_REVISION                   0x000e
+  #define VD55G1_OPTICAL_REV_MONO                     0x00
+  #define VD55G1_OPTICAL_REV_RGB                      0x01
 #define VD55G1_ERROR_CODE                             0x0010
 #define VD55G1_REG_FWPATCH_REVISION                   0x0012
 #define VD55G1_REG_SYSTEM_FSM                         0x001C
@@ -66,6 +69,7 @@
 #define VD55G1_REG_AWU_CTRL                           0x036c
 #define VD55G1_REG_AWU_DETECTION_THRESHOLD            0x0370
 #define VD55G1_REG_MAX_COARSE_INTEGRATION_LINES       0x0372
+#define VD55G1_REG_EXP_COARSE_INTG_MARGIN_ADC_10      0x037e
 #define VD55G1_REG_DUSTER_CTRL                        0x03ae
   #define VD55G1_DUSTER_DISABLE                       0
 #define VD55G1_REG_CONTEXT_NEXT_CONTEXT               0x03e4
@@ -76,6 +80,12 @@
   #define VD55G1_EXP_MODE_AUTO                        0
   #define VD55G1_EXP_MODE_FREEZE                      1
   #define VD55G1_EXP_MODE_MANUAL                      2
+#define VD55G1_REG_MANUAL_ANALOG_GAIN                 0x0501
+#define VD55G1_REG_MANUAL_COARSE_EXPOSURE             0x0502
+#define VD55G1_REG_MANUAL_DIGITAL_GAIN_CH0            0x0504
+#define VD55G1_REG_MANUAL_DIGITAL_GAIN_CH1            0x0506
+#define VD55G1_REG_MANUAL_DIGITAL_GAIN_CH2            0x0508
+#define VD55G1_REG_MANUAL_DIGITAL_GAIN_CH3            0x050a
 #define VD55G1_REG_FRAME_LENGTH                       0x050c
 #define VD55G1_REG_Y_START                            0x0510
 #define VD55G1_REG_Y_HEIGHT                           0x0512
@@ -105,9 +115,16 @@
 #define VD55G1_MIPI_DATA_RATE_HZ                      804000000
 #define VD55G1_MIN_LINE_LEN_ADC_9                     978
 #define VD55G1_MIN_LINE_LEN_ADC_10                    1128
-#define VD55G1_MIPI_BPP                               8
 #define VD55G1_MIPI_MARGIN                            900
 #define VD55G1_MIN_VBLANK                             86
+
+#define VD55G1_RAW8_DATA_TYPE                         0x2a
+#define VD55G1_RAW10_DATA_TYPE                        0x2b
+
+#define VD55G1_ANALOG_GAIN_DEFAULT                    0
+#define VD55G1_DIGITAL_GAIN_DEFAULT                   0x100
+#define VD55G1_EXPOSURE_COARSE_DEFAULT                500
+#define VD55G1_EXPOSURE_MIN_COARSE_LINES_ADC_10       4
 
 #ifndef MIN
 #define MIN(a,b) ((a)<(b)?(a):(b))
@@ -115,6 +132,10 @@
 
 #ifndef MAX
 #define MAX(a,b) ((a)>(b)?(a):(b))
+#endif
+
+#ifndef CEIL
+#define CEIL(num) ((num) == (int)(num) ? (int)(num) : (num) > 0 ? (int)((num) + 1) : (int)(num))
 #endif
 
 enum vd55g1_bin_mode {
@@ -325,6 +346,43 @@ static int VD55G1_WaitState(VD55G1_Ctx_t *ctx, int state)
   return ret;
 }
 
+static int VD55G1_SetBayerType(VD55G1_Ctx_t *ctx)
+{
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+  uint16_t reg16;
+  int ret;
+
+  /* OPTICAL_REVISION reg is populated once sensor is booted  */
+  ret = ctx->read16(ctx, VD55G1_REG_OPTICAL_REVISION, &reg16);
+  VD55G1_TraceError(ctx, ret);
+
+  ctx->ctx.is_mono = (reg16 == VD55G1_OPTICAL_REV_MONO);
+
+  if (drv_ctx->is_mono) {
+    ctx->bayer = VD55G1_BAYER_NONE;
+    return 0;
+  }
+
+  switch (drv_ctx->config_save.flip_mirror_mode) {
+  case VD55G1_MIRROR_FLIP_NONE:
+    ctx->bayer = VD55G1_BAYER_RGGB;
+    break;
+  case VD55G1_FLIP:
+    ctx->bayer = VD55G1_BAYER_GBRG;
+    break;
+  case VD55G1_MIRROR:
+    ctx->bayer = VD55G1_BAYER_GRBG;
+    break;
+  case VD55G1_MIRROR_FLIP:
+    ctx->bayer = VD55G1_BAYER_BGGR;
+    break;
+  default:
+    assert(0);
+  }
+
+  return 0;
+}
+
 static int VD55G1_CheckModelId(VD55G1_Ctx_t *ctx)
 {
   struct drv_ctx *drv_ctx = &ctx->ctx;
@@ -335,8 +393,8 @@ static int VD55G1_CheckModelId(VD55G1_Ctx_t *ctx)
   ret = ctx->read32(ctx, VD55G1_REG_MODEL_ID, &reg32);
   VD55G1_TraceError(ctx, ret);
   VD55G1_dbg(ctx, 0, "model_id = 0x%04x\n", reg32);
-  if (reg32 != VD55G1_MODEL_ID) {
-    VD55G1_error(ctx, "Bad model id expected 0x%04x / got 0x%04x\n", VD55G1_MODEL_ID, reg32);
+  if ((reg32 != VD55G1_MODEL_ID_VD55G1) && (reg32 != VD55G1_MODEL_ID_VDx5G4)) {
+    VD55G1_error(ctx, "Bad model id got 0x%04x\n", reg32);
     return -1;
   }
 
@@ -344,14 +402,14 @@ static int VD55G1_CheckModelId(VD55G1_Ctx_t *ctx)
   VD55G1_TraceError(ctx, ret);
   VD55G1_dbg(ctx, 0, "revision = 0x%04x\n", reg16);
   switch (reg16) {
-  case VD55G1_REVISION_CUT_1:
-    drv_ctx->cut_version = VD55G1_REVISION_CUT_1;
-    break;
   case VD55G1_REVISION_CUT_2:
     drv_ctx->cut_version = VD55G1_REVISION_CUT_2;
     break;
+  case VD55G1_REVISION_CUT_3:
+    drv_ctx->cut_version = VD55G1_REVISION_CUT_3;
+    break;
   default:
-    VD55G1_error(ctx, "Unsupported revision0x%04x\n", reg16);
+    VD55G1_error(ctx, "Unsupported revision 0x%04x\n", reg16);
     return -1;
   }
 
@@ -362,8 +420,8 @@ static int VD55G1_CheckModelId(VD55G1_Ctx_t *ctx)
   return 0;
 }
 
-static int VD55G1_ApplyPatchCommon(VD55G1_Ctx_t *ctx, uint8_t *patch_array, int patch_len, uint8_t patch_major,
-                                   uint8_t patch_minor)
+static int VD55G1_ApplyPatch(VD55G1_Ctx_t *ctx, uint8_t *patch_array, int patch_len, uint8_t patch_major,
+                             uint8_t patch_minor)
 {
   uint16_t reg16;
   int ret;
@@ -387,30 +445,38 @@ static int VD55G1_ApplyPatchCommon(VD55G1_Ctx_t *ctx, uint8_t *patch_array, int 
   }
   VD55G1_notice(ctx, "patch %d.%d applied\n", reg16 >> 8, reg16 & 0xff);
 
+  return 0;
+}
+
+static int VD55G1_PatchAndBoot(VD55G1_Ctx_t *ctx)
+{
+  int ret;
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+
+  switch (drv_ctx->cut_version) {
+  case VD55G1_REVISION_CUT_2:
+    ret = VD55G1_ApplyPatch(ctx, (uint8_t *) patch_array_cut_2, sizeof(patch_array_cut_2),
+                            VD55G1_FWPATCH_REVISION_MAJOR_CUT_2, VD55G1_FWPATCH_REVISION_MINOR_CUT_2);
+    VD55G1_TraceError(ctx, ret);
+    break;
+  case VD55G1_REVISION_CUT_3:
+    /* No firmware patch, Boot only*/
+    ret = ctx->write8(ctx, VD55G1_REG_BOOT, VD55G1_BOOT_BOOT);
+    VD55G1_TraceError(ctx, ret);
+    ret = VD55G1_PollReg8(ctx, VD55G1_REG_BOOT, VD55G1_CMD_ACK);
+    VD55G1_TraceError(ctx, ret);
+    break;
+  default:
+    VD55G1_error(ctx, "Unsupported cut version 0x%04x\n", drv_ctx->cut_version);
+    return -1;
+    break;
+  }
+
   ret = VD55G1_WaitState(ctx, VD55G1_SYSTEM_FSM_SW_STBY);
   VD55G1_TraceError(ctx, ret);
 
   VD55G1_notice(ctx, "sensor boot successfully\n");
-
   return 0;
-}
-
-static int VD55G1_ApplyPatch(VD55G1_Ctx_t *ctx)
-{
-  struct drv_ctx *drv_ctx = &ctx->ctx;
-
-  switch (drv_ctx->cut_version) {
-  case VD55G1_REVISION_CUT_1:
-    return VD55G1_ApplyPatchCommon(ctx, (uint8_t *) patch_array_cut_1, sizeof(patch_array_cut_1),
-                                   VD55G1_FWPATCH_REVISION_MAJOR_CUT_1, VD55G1_FWPATCH_REVISION_MINOR_CUT_1);
-  case VD55G1_REVISION_CUT_2:
-    return VD55G1_ApplyPatchCommon(ctx, (uint8_t *) patch_array_cut_2, sizeof(patch_array_cut_2),
-                                   VD55G1_FWPATCH_REVISION_MAJOR_CUT_2, VD55G1_FWPATCH_REVISION_MINOR_CUT_2);
-  default:
-    assert(0);
-  }
-
-  return -1;
 }
 
 static int VD55G1_Gpios(VD55G1_Ctx_t *ctx)
@@ -440,7 +506,11 @@ static int VD55G1_Boot(VD55G1_Ctx_t *ctx)
   if (ret)
     return ret;
 
-  ret = VD55G1_ApplyPatch(ctx);
+  ret = VD55G1_PatchAndBoot(ctx);
+  if (ret)
+    return ret;
+
+  ret = VD55G1_SetBayerType(ctx);
   if (ret)
     return ret;
 
@@ -510,9 +580,31 @@ static int VD55G1_SetupClocks(VD55G1_Ctx_t *ctx)
   return 0;
 }
 
+static int VD55G1_GetLineTimeInUs(VD55G1_Ctx_t *ctx, uint32_t *line_time_in_us)
+{
+  uint16_t line_len;
+  uint32_t pixel_clock;
+  int ret;
+
+  ret = ctx->read16(ctx, VD55G1_REG_LINE_LENGTH, &line_len);
+  VD55G1_TraceError(ctx, ret);
+
+  /* compute line_time_in_us */
+  pixel_clock = VD55G1_GetPixelClock(ctx);
+  if (!pixel_clock)
+    return -1;
+
+  /* Round up line time to the next integer */
+  *line_time_in_us = ((uint64_t)line_len * 1000000) / pixel_clock + 1;
+
+  return 0;
+}
+
 static int VD55G1_SetupOutput(VD55G1_Ctx_t *ctx)
 {
   VD55G1_OutItf_Config_t *out_itf = &ctx->ctx.config_save.out_itf;
+  uint8_t pixel_depth = ctx->ctx.config_save.pixel_depth;
+  uint8_t data_type;
   uint16_t oif_ctrl;
   int ret;
 
@@ -520,8 +612,12 @@ static int VD55G1_SetupOutput(VD55G1_Ctx_t *ctx)
   out_itf->clock_lane_swap_enable = !!out_itf->clock_lane_swap_enable;
   out_itf->data_lane_swap_enable = !!out_itf->data_lane_swap_enable;
 
-  /* raw8 */
-  ret = ctx->write8(ctx, VD55G1_REG_FORMAT_CTRL, 8);
+  if (pixel_depth == 10)
+    data_type = VD55G1_RAW10_DATA_TYPE;
+  else
+    data_type = VD55G1_RAW8_DATA_TYPE;
+
+  ret = ctx->write8(ctx, VD55G1_REG_FORMAT_CTRL, pixel_depth);
   VD55G1_TraceError(ctx, ret);
 
   /* csi lanes */
@@ -531,7 +627,7 @@ static int VD55G1_SetupOutput(VD55G1_Ctx_t *ctx)
   VD55G1_TraceError(ctx, ret);
 
   /* data type */
-  ret = ctx->write8(ctx, VD55G1_REG_OIF_IMG_CTRL, 0x2a);
+  ret = ctx->write8(ctx, VD55G1_REG_OIF_IMG_CTRL, data_type);
   VD55G1_TraceError(ctx, ret);
 
   return 0;
@@ -566,6 +662,7 @@ static int VD55G1_SetupLineLen(VD55G1_Ctx_t *ctx)
 {
   struct drv_ctx *drv_ctx = &ctx->ctx;
   int min_line_len_mipi;
+  uint8_t bit_per_pixel = drv_ctx->config_save.pixel_depth;
   uint16_t line_len;
   uint16_t width;
   int ret;
@@ -573,7 +670,7 @@ static int VD55G1_SetupLineLen(VD55G1_Ctx_t *ctx)
   ret = ctx->read16(ctx, VD55G1_REG_X_WIDTH, &width);
   VD55G1_TraceError(ctx, ret);
 
-  min_line_len_mipi = ((width * VD55G1_MIPI_BPP + VD55G1_MIPI_MARGIN) * (uint64_t)drv_ctx->pclk)
+  min_line_len_mipi = ((width * bit_per_pixel + VD55G1_MIPI_MARGIN) * (uint64_t)drv_ctx->pclk)
                       / VD55G1_MIPI_DATA_RATE_HZ;
   line_len = MAX(VD55G1_MIN_LINE_LEN_ADC_10, min_line_len_mipi);
 
@@ -586,11 +683,11 @@ static int VD55G1_SetupLineLen(VD55G1_Ctx_t *ctx)
 
 static int VD55G1_ComputeFrameLength(VD55G1_Ctx_t *ctx, int fps, uint16_t *frame_length)
 {
-  struct drv_ctx *drv_ctx = &ctx->ctx;
   int min_frame_length;
   int req_frame_length;
   uint16_t line_length;
   uint16_t height;
+  uint32_t pixel_clock;
   int ret;
 
   ret = ctx->read16(ctx, VD55G1_REG_LINE_LENGTH, &line_length);
@@ -600,7 +697,8 @@ static int VD55G1_ComputeFrameLength(VD55G1_Ctx_t *ctx, int fps, uint16_t *frame
   VD55G1_TraceError(ctx, ret);
 
   min_frame_length = height + VD55G1_MIN_VBLANK;
-  req_frame_length = drv_ctx->pclk / (line_length * fps);
+  pixel_clock = VD55G1_GetPixelClock(ctx);
+  req_frame_length = pixel_clock / (line_length * fps);
   *frame_length = MIN(MAX(min_frame_length, req_frame_length), 65535);
 
   VD55G1_dbg(ctx, 1, "frame_length to MAX(%d, %d) = %d to reach %d fps\n", min_frame_length, req_frame_length,
@@ -625,6 +723,27 @@ static int VD55G1_SetupFrameRate(VD55G1_Ctx_t *ctx)
 
   VD55G1_dbg(ctx, 1, "Set frame_length to %d to reach %d fps\n", frame_length, drv_ctx->config_save.frame_rate);
   ret = ctx->write16(ctx, VD55G1_REG_FRAME_LENGTH, frame_length);
+  VD55G1_TraceError(ctx, ret);
+
+  return 0;
+}
+
+static int VD55G1_SetManualExpoGains(VD55G1_Ctx_t *ctx)
+{
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+  int ret;
+
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_COARSE_EXPOSURE, drv_ctx->manual_coarse_integration);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write8(ctx, VD55G1_REG_MANUAL_ANALOG_GAIN, drv_ctx->manual_analog_gain);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH0, drv_ctx->manual_digital_gain);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH1, drv_ctx->manual_digital_gain);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH2, drv_ctx->manual_digital_gain);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH3, drv_ctx->manual_digital_gain);
   VD55G1_TraceError(ctx, ret);
 
   return 0;
@@ -656,9 +775,19 @@ static int VD55G1_SetupExposure(VD55G1_Ctx_t *ctx)
   VD55G1_dbg(ctx, 1, "Max coarse lines = %d\n", frame_length - 10);
 
   /* turn on auto exposure except when patgen is active */
-  reg = drv_ctx->config_save.patgen != VD55G1_PATGEN_CTRL_DISABLE ? VD55G1_EXP_MODE_MANUAL : VD55G1_EXP_MODE_AUTO;
+  reg = drv_ctx->exposure_mode;
+  if (drv_ctx->config_save.patgen != VD55G1_PATGEN_CTRL_DISABLE)
+    reg = VD55G1_EXP_MODE_MANUAL;
+
   ret = ctx->write8(ctx, VD55G1_REG_EXP_MODE, reg);
   VD55G1_TraceError(ctx, ret);
+
+  if (reg == VD55G1_EXP_MODE_MANUAL)
+  {
+    ret = VD55G1_SetManualExpoGains(ctx);
+    if (ret)
+      return ret;
+  }
 
   return 0;
 }
@@ -1003,7 +1132,14 @@ int VD55G1_Init(VD55G1_Ctx_t *ctx, VD55G1_Config_t *config)
       return -1;
   }
 
+  if ((config->pixel_depth != 8) && (config->pixel_depth != 10))
+    return -1;
+
   drv_ctx->config_save = *config;
+  drv_ctx->exposure_mode = VD55G1_EXPOSURE_MODE_AUTO;
+  drv_ctx->manual_coarse_integration = VD55G1_EXPOSURE_COARSE_DEFAULT;
+  drv_ctx->manual_analog_gain = VD55G1_ANALOG_GAIN_DEFAULT;
+  drv_ctx->manual_digital_gain = VD55G1_DIGITAL_GAIN_DEFAULT;
 
   ctx->shutdown_pin(ctx, 0);
   ctx->delay(ctx, 10);
@@ -1101,6 +1237,9 @@ int VD55G1_SetFlipMirrorMode(VD55G1_Ctx_t *ctx, VD55G1_MirrorFlip_t mode)
   }
 
   drv_ctx->config_save.flip_mirror_mode = mode;
+  ret = VD55G1_SetBayerType(ctx);
+  if (ret)
+    return ret;
 
   if (is_streaming) {
     ret = VD55G1_Start(ctx);
@@ -1147,6 +1286,122 @@ int VD55G1_SetFlickerMode(VD55G1_Ctx_t *ctx, VD55G1_Flicker_t mode)
     return ret;
 
   drv_ctx->config_save.flicker = mode;
+
+  return 0;
+}
+
+int VD55G1_SetExposureMode(VD55G1_Ctx_t *ctx, VD55G1_ExposureMode_t mode)
+{
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+  int ret;
+
+  if ((mode != VD55G1_EXPOSURE_MODE_AUTO) &&
+      (mode != VD55G1_EXPOSURE_MODE_FREEZE) &&
+      (mode != VD55G1_EXPOSURE_MODE_MANUAL))
+    return -1;
+
+  ret = ctx->write8(ctx, VD55G1_REG_EXP_MODE, (uint8_t)mode);
+  VD55G1_TraceError(ctx, ret);
+
+  drv_ctx->exposure_mode = (uint8_t)mode;
+
+  if (mode == VD55G1_EXPOSURE_MODE_MANUAL)
+    return VD55G1_SetManualExpoGains(ctx);
+
+  return 0;
+}
+
+int VD55G1_SetAnalogGain(VD55G1_Ctx_t *ctx, int gain)
+{
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+  int ret;
+
+  if ((gain < VD55G1_ANALOG_GAIN_MIN) || (gain > VD55G1_ANALOG_GAIN_MAX))
+    return -1;
+
+  ret = ctx->write8(ctx, VD55G1_REG_MANUAL_ANALOG_GAIN, (uint8_t)gain);
+  VD55G1_TraceError(ctx, ret);
+
+  drv_ctx->manual_analog_gain = (uint8_t)gain;
+
+  return 0;
+}
+
+int VD55G1_SetDigitalGain(VD55G1_Ctx_t *ctx, int gain)
+{
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+  int ret;
+
+  if ((gain < (int)VD55G1_DIGITAL_GAIN_MIN) || (gain > (int)VD55G1_DIGITAL_GAIN_MAX))
+    return -1;
+
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH0, (uint16_t)gain);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH1, (uint16_t)gain);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH2, (uint16_t)gain);
+  VD55G1_TraceError(ctx, ret);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_DIGITAL_GAIN_CH3, (uint16_t)gain);
+  VD55G1_TraceError(ctx, ret);
+
+  drv_ctx->manual_digital_gain = (uint16_t)gain;
+
+  return 0;
+}
+
+int VD55G1_GetExposureRegRange(VD55G1_Ctx_t *ctx, uint32_t *min_us, uint32_t *max_us)
+{
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+  uint16_t exp_coarse_intg_margin;
+  uint32_t line_time_in_us;
+  uint16_t frame_length;
+  int ret;
+
+  if ((min_us == NULL) || (max_us == NULL))
+    return -1;
+
+  ret = VD55G1_GetLineTimeInUs(ctx, &line_time_in_us);
+  if (ret)
+    return ret;
+
+  *min_us = VD55G1_EXPOSURE_MIN_COARSE_LINES_ADC_10 * line_time_in_us;
+
+  ret = VD55G1_ComputeFrameLength(ctx, drv_ctx->config_save.frame_rate, &frame_length);
+  if (ret)
+    return ret;
+
+  ret = ctx->read16(ctx, VD55G1_REG_EXP_COARSE_INTG_MARGIN_ADC_10, &exp_coarse_intg_margin);
+  VD55G1_TraceError(ctx, ret);
+
+  *max_us = (frame_length - exp_coarse_intg_margin) * line_time_in_us;
+
+  return 0;
+}
+
+int VD55G1_SetExposureTime(VD55G1_Ctx_t *ctx, int exposure_us)
+{
+  struct drv_ctx *drv_ctx = &ctx->ctx;
+  int32_t ret;
+  uint32_t exp_min, exp_max;
+  uint32_t line_time_in_us;
+  uint32_t exposure_reg;
+
+  ret = VD55G1_GetExposureRegRange(ctx, &exp_min, &exp_max);
+  if (ret)
+    return ret;
+
+  if ((uint32_t)exposure_us < exp_min || (uint32_t)exposure_us > exp_max)
+    return -1;
+
+  ret = VD55G1_GetLineTimeInUs(ctx, &line_time_in_us);
+  if (ret)
+    return ret;
+
+  exposure_reg = CEIL(exposure_us / line_time_in_us);
+  ret = ctx->write16(ctx, VD55G1_REG_MANUAL_COARSE_EXPOSURE, exposure_reg);
+  VD55G1_TraceError(ctx, ret);
+
+  drv_ctx->manual_coarse_integration = (uint16_t)exposure_reg;
 
   return 0;
 }

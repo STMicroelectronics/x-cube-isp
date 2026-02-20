@@ -27,7 +27,7 @@
 /* Exported functions ------------------------------------------------------- */
 void ISP_ToolCom_Init(void);
 void ISP_ToolCom_ReceivedCb(uint8_t *buffer, uint32_t buffer_size);
-void ISP_ToolCom_SendData(uint8_t *buffer, uint32_t buffer_size, char *dump_start_msg,  char *dump_stop_msg);
+void ISP_ToolCom_SendData(uint8_t *buffer, uint32_t buffer_size, char *dump_start_msg, char *dump_stop_msg);
 uint32_t ISP_ToolCom_CheckCommandReceived(uint8_t **block_cmd);
 void ISP_ToolCom_PrepareNextCommand();
 

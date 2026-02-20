@@ -73,9 +73,10 @@
 #define IMX335_COLOR_DEPTH        10 /* in bits */
 #define IMX335_GAIN_MIN           (0 * 1000)
 #define IMX335_GAIN_MAX           (72 * 1000)
+#define IMX335_AGAIN_MAX          (30 * 1000)
 #define IMX335_GAIN_DEFAULT       (20 * 1000)
 #define IMX335_GAIN_UNIT_MDB      300
-#define IMX335_EXPOSURE_MIN       0           /* in us */
+#define IMX335_EXPOSURE_MIN       8           /* in us, for sensor @30fps (round up of 7.40 usec) */
 #define IMX335_EXPOSURE_MAX       33266       /* in us, for sensor @30fps */
 
 

@@ -30,23 +30,23 @@ the board.
 - Embedded Auto White Balance algorithm (AWB)
 - STM32 ISP IQTune application
 
-## Software components
-| Name                         | Version
-|-----                         | -------
-| CMSIS                        | v5.9.0
-| STM32N6xx CMSIS Device       | v1.2.0
-| STM32N6xx HAL/LL Drivers     | v1.2.0
-| STM32N6570-DK BSP Drivers    | v1.2.0
-| BSP Component aps256xx       | v1.0.6
-| BSP Component Common         | v7.3.0
-| BSP Component mx66uw1g45g    | v1.1.0
-| BSP Component rk050hr18      | v1.0.1
-| STM32 Camera Middleware      | v1.4.2
-| STM32 USB Device Library     | v2.11.3
-| STM32 ISP Library            | v1.2.0
-| ISP IQTune application       | v1.3.0
-
 ## Update history
+
+### V2.0.0 / February 2026
+- Update STM32N6 HAL, CMSI and BSP to the version 1.3.0
+- **New 2A algorithms**:
+  - The **Auto-Exposure (AE)** algorithm is now based on lux estimation, providing a faster and more stable approach to achieve the luminance target.
+  - The **Auto White Balance (AWB)** algorithm now uses color ratios to reach color accuracy more quickly and with greater stability. Additionally, this new algorithm offers improved rendering between two profiles through interpolation.
+- **New tuning parameters** are now required to run the new 2A algorithms. These parameters are avalaible for the following list of sensors:
+  - IMX335
+  - VD66GY
+  - VD5943 (MONO)
+  - VD1943
+  - VD65G4
+  - VD56G3 (MONO)
+- **UVC feature**:
+  - Support of USBx and Threadx
+  - Camera preview is now displayed using UVC live streaming
 
 ### V1.2.0 / July 2025
 - Update STM32N6 HAL, CMSI and BSP to the version 1.2.0
@@ -65,3 +65,20 @@ the board.
 
 ### V1.0.0 / December 2024
  - Initial release
+
+## Software components
+| Name                         | Version
+|-----                         | -------
+| CMSIS                        | 5.9.0
+| STM32N6xx CMSIS Device       | 1.3.0
+| STM32N6xx HAL/LL Drivers     | 1.3.0
+| STM32N6570-DK BSP Drivers    | 1.3.0
+| BSP Component aps256xx       | 1.0.6
+| BSP Component Common         | 7.3.0
+| BSP Component mx66uw1g45g    | 1.1.0
+| BSP Component rk050hr18      | 1.0.1
+| STM32 Camera Middleware      | 1.5.1
+| Azure RTOS USBX for STM32    | 6.4.0_rel / ST modified 251022
+| Azure RTOS Threadx for STM32 | 6.4.0_rel / ST modified 250822
+| STM32 ISP Library            | 2.0.0
+| ISP IQTune application       | 2.0.0

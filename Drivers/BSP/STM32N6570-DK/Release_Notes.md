@@ -28,7 +28,49 @@ This driver provides a set of functions to manage:
 
 
 ::: {.collapse}
-<input type="checkbox" id="collapse-section3" checked aria-hidden="true">
+<input type="checkbox" id="collapse-section4" checked aria-hidden="true">
+<label for="collapse-section4" checked aria-hidden="true">__V1.3.0 / 29-October-2025__</label>
+<div>
+
+## Main Changes
+
+###  Third maintenance release of board drivers supporting **STM32N6570-DK board** (MB1939C)
+
+
+## Contents
+
+  - Fix external memory size definition in BSP_XSPI_NOR_Init() API
+  - Enhance XSPI_NOR_ResetMemory() and XSPI_NOR_EnterDOPIMode() APIs to decrease NOR initialization time
+  - Correct XSPI_Ram_Ctx[] array number of entries definition
+  - Correct SAI_MspInit() to ensure audio output is available when all RAM is non-cacheable
+  - Update isp_param_conf.h to be aligned with ISP library v1.2.0
+
+
+
+## Known Limitations
+
+  - None
+
+## Dependencies
+
+  - ISP library v1.2.0
+
+## Notes
+
+
+*stm32n6570_discovery_conf_template.h* file must be copied in user application as *stm32n6570_discovery_conf.h* with optional configuration update
+
+
+\
+
+</div>
+:::
+
+
+
+
+::: {.collapse}
+<input type="checkbox" id="collapse-section3" aria-hidden="true">
 <label for="collapse-section3" checked aria-hidden="true">__V1.2.0 / 04-June-2025__</label>
 <div>
 

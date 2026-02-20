@@ -25,11 +25,17 @@ extern "C" {
 #endif
 
 /* Sensors parameters */
-#define CAMERA_IMX335_ADDRESS          0x34U
-#define CAMERA_VD66GY_ADDRESS          0x20U
-#define CAMERA_VD66GY_FREQ_IN_HZ       12000000U
 #define CAMERA_VD55G1_ADDRESS          0x20U
 #define CAMERA_VD55G1_FREQ_IN_HZ       12000000U
+#define CAMERA_VD65G4_ADDRESS          0x20U
+#define CAMERA_VD65G4_FREQ_IN_HZ       12000000U
+#define CAMERA_IMX335_ADDRESS          0x34U
+#define CAMERA_OV5640_ADDRESS          0x78U
+#define CAMERA_VD66GY_ADDRESS          0x20U
+#define CAMERA_VD66GY_FREQ_IN_HZ       12000000U
+#define CAMERA_VD56G3_ADDRESS          0x20U
+#define CAMERA_VD56G3_FREQ_IN_HZ       12000000U
+#define CAMERA_VD1943_ADDRESS          0x20U
 
 #if defined (STM32N657xx)
 

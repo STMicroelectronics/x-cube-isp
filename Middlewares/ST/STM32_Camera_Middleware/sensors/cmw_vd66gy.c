@@ -23,6 +23,7 @@
 #include <stddef.h>
 #include <string.h>
 #include "cmw_camera.h"
+#include "cmw_io.h"
 #ifndef ISP_MW_TUNING_TOOL_SUPPORT
 #include "isp_param_conf.h"
 #endif
@@ -33,7 +34,9 @@
 
 #define container_of(ptr, type, member) (type *) ((unsigned char *)ptr - offsetof(type,member))
 
+#ifndef MIN
 #define MIN(a, b)                           ((a) < (b) ?  (a) : (b))
+#endif
 #define MDECIBEL_TO_LINEAR(mdB)             (pow(10.0, (mdB / 1000.0) / 20.0))
 #define LINEAR_TO_MDECIBEL(linearValue)     (1000 * (20.0 * log10(linearValue)))
 #define FLOAT_TO_FP58(x)                    (((uint16_t)(x) << 8) | ((uint16_t)((x - (uint16_t)(x)) * 256.0f) & 0xFF))
@@ -233,12 +236,17 @@ static int32_t CMW_VD66GY_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
   VD6G_Config_t config = { 0 };
   int ret;
   int i;
+  CMW_VD66GY_config_t *sensor_config;
+  sensor_config = (CMW_VD66GY_config_t*)(initSensor->sensor_config);
+  if (sensor_config == NULL)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
 
   if (((CMW_VD66GY_t *)io_ctx)->IsInitialized)
   {
     return CMW_ERROR_NONE;
   }
-
 
   config.frame_rate = initSensor->fps;
   ret = CMW_VD66GY_GetResType(initSensor->width, initSensor->height, &config.resolution);
@@ -246,16 +254,37 @@ static int32_t CMW_VD66GY_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
   {
     return CMW_ERROR_WRONG_PARAM;
   }
-  config.ext_clock_freq_in_hz = ((CMW_VD66GY_t *)io_ctx)->ClockInHz;
-  config.flip_mirror_mode = CMW_VD66GY_getMirrorFlipConfig(initSensor->mirrorFlip);
-  config.line_len = 0;
-  config.patgen = VD6G_PATGEN_DISABLE;
-  config.flicker = VD6G_FLICKER_FREE_NONE;
+
+  switch (sensor_config->pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    case CMW_PIXEL_FORMAT_RAW10:
+    {
+      config.pixel_depth = 10;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW8:
+    {
+      config.pixel_depth = 8;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+      break;
+  }
+
+  config.ext_clock_freq_in_hz = CAMERA_VD66GY_FREQ_IN_HZ; /* Default clock frequency */
+  config.line_len = sensor_config->line_len;
   config.out_itf.datalane_nb = 2;
   config.out_itf.clock_lane_swap_enable = 1;
   config.out_itf.data_lane0_swap_enable = 1;
   config.out_itf.data_lane1_swap_enable = 1;
   config.out_itf.data_lanes_mapping_swap_enable = 0;
+
+  config.flip_mirror_mode = CMW_VD66GY_getMirrorFlipConfig(initSensor->mirrorFlip);
+  config.patgen = VD6G_PATGEN_DISABLE;
+  config.flicker = VD6G_FLICKER_FREE_NONE;
+
   for (i = 0; i < VD6G_GPIO_NB; i++)
   {
     config.gpio_ctrl[i] = VD6G_GPIO_GPIO_IN;
@@ -275,6 +304,13 @@ static int32_t CMW_VD66GY_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
 
   ((CMW_VD66GY_t *)io_ctx)->IsInitialized = 1;
   return CMW_ERROR_NONE;
+}
+
+void CMW_VD66GY_SetDefaultSensorValues(CMW_VD66GY_config_t *vd66gy_config)
+{
+  assert(vd66gy_config != NULL);
+  vd66gy_config->line_len = 0;
+  vd66gy_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
 }
 
 static int32_t CMW_VD66GY_Start(void *io_ctx)
@@ -515,8 +551,8 @@ int32_t CMW_VD66GY_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
   /* Get isp bayer pattern info */
   info->bayer_pattern = ((CMW_VD66GY_t *)io_ctx)->ctx_driver.bayer - 1;
 
-  /* Get color depth */
-  info->color_depth = VD6G_COLOR_DEPTH_RAW8;
+  /* Color depth derives from the current driver configuration */
+  info->color_depth = ((CMW_VD66GY_t *)io_ctx)->ctx_driver.ctx.config_save.pixel_depth;
 
   /* Get resolution info */
   info->width = VD6G_MAX_WIDTH;
@@ -538,6 +574,7 @@ int32_t CMW_VD66GY_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
 
   info->gain_min = again_min_mdB + dgain_min_mdB;
   info->gain_max = again_max_mdB + dgain_max_mdB;
+  info->again_max = again_max_mdB;
 
   /* Get exposure range */
   ret = VD6G_GetExposureRegRange(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, &info->exposure_min, &info->exposure_max);

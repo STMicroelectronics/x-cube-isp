@@ -23,6 +23,7 @@
 #include "isp_cmd_parser.h"
 #include "isp_tool_com.h"
 #include "isp_services.h"
+#include "usbx.h"
 
 /* Private types -------------------------------------------------------------*/
 typedef enum {
@@ -33,6 +34,13 @@ typedef enum {
   ISP_CMD_OP_GET_OK            = 0x82,
   ISP_CMD_OP_GET_FAILURE       = 0x83,
 } ISP_CMD_Operation_TypeDef;
+
+typedef enum {
+  ISP_HOST_OS_UNKNOWN = 0,
+  ISP_HOST_OS_LINUX   = 1,
+  ISP_HOST_OS_WINDOWS = 2,
+  ISP_HOST_OS_MAC     = 3,
+} ISP_HostOsTypeDef;
 
 typedef enum {
   ISP_CMD_STATREMOVAL          = 0x00,
@@ -65,12 +73,18 @@ typedef enum {
   ISP_CMD_SENSORDELAYMEASURE   = 0x1B,
   ISP_CMD_FIRMWARECONFIG       = 0x1C,
   ISP_CMD_UNIQUE_GAMMA         = 0x1D,
+  ISP_CMD_LUXREF               = 0x1E,
+  ISP_CMD_AWBCOLORTEMP         = 0x1F,
+  ISP_CMD_HOST_OS_TYPE         = 0x20,
   /* Application API commands */
   ISP_CMD_USER_EXPOSURETARGET  = 0x80,
   ISP_CMD_USER_LISTWBREFMODES  = 0x81,
   ISP_CMD_USER_WBREFMODE       = 0x82,
   ISP_CMD_USER_GETDECIMATION   = 0x83,
   ISP_CMD_USER_STATISTICAREA   = 0x84,
+  ISP_CMD_USER_LUX             = 0x85,
+  /* Frame data output command */
+  ISP_CMD_FRAMEDATA            = 0xFE,
   /* Metadata output command */
   ISP_CMD_METADATA_OUTPUT      = 0xFF,
 } ISP_CMD_ID_TypeDef;
@@ -168,6 +182,12 @@ typedef struct
 typedef struct
 {
   ISP_CMD_HeaderTypeDef header;
+  uint32_t colortemp;
+} ISP_CMD_AWBColorTempTypeDef;
+
+typedef struct
+{
+  ISP_CMD_HeaderTypeDef header;
   ISP_ISPGainTypeDef data;
 } ISP_CMD_ISPGainStaticTypeDef;
 
@@ -237,7 +257,39 @@ typedef struct
 typedef struct
 {
   ISP_CMD_HeaderTypeDef header;
-  ISP_SensorInfoTypeDef data;
+  ISP_LuxReferenceTypedef data;
+} ISP_CMD_LuxRefTypeDef;
+
+typedef struct
+{
+  ISP_CMD_HeaderTypeDef header;
+  uint32_t estimation;
+} ISP_CMD_LuxTypeDef;
+
+typedef struct
+{
+  ISP_CMD_HeaderTypeDef header;
+  ISP_HostOsTypeDef data;
+} ISP_CMD_HostOsTypeDef;
+
+/* Keep sensor info backward compatibility */
+typedef struct
+{
+  char name[ISP_SENSOR_INFO_MAX_LENGTH];
+  uint8_t bayer_pattern;
+  uint8_t color_depth;
+  uint32_t width;
+  uint32_t height;
+  uint32_t gain_min;
+  uint32_t gain_max;
+  uint32_t exposure_min;
+  uint32_t exposure_max;
+} ISP_SensorInfoTypeDef2;
+
+typedef struct
+{
+  ISP_CMD_HeaderTypeDef header;
+  ISP_SensorInfoTypeDef2 data;
 } ISP_CMD_SensorInfoTypeDef;
 
 typedef struct
@@ -264,6 +316,15 @@ typedef struct
   uint8_t enable;
 } ISP_CMD_MetadataOutputTypeDef;
 
+typedef struct
+{
+  ISP_CMD_HeaderTypeDef header;
+  uint32_t exposure;          /* Exposure time in us */
+  uint32_t gain;              /* Gain in mdB */
+  int32_t luxEstimation;
+  uint32_t colortemp;
+} ISP_CMD_FramedataTypeDef;
+
 typedef union {
   ISP_CMD_BaseTypeDef              base;
   ISP_CMD_StatRemovalTypeDef       statRemoval;
@@ -277,8 +338,11 @@ typedef union {
   ISP_CMD_BadPixelStaticTypeDef    badPixelStatic;
   ISP_CMD_BlackLevelStaticTypeDef  blackLevelStatic;
   ISP_CMD_AECAlgoTypeDef           AECAlgo;
+  ISP_CMD_LuxRefTypeDef            luxRef;
+  ISP_CMD_LuxTypeDef               lux;
   ISP_CMD_AWBAlgoTypeDef           AWBAlgo;
   ISP_CMD_AWBProfileTypeDef        AWBProfile;
+  ISP_CMD_AWBColorTempTypeDef      AWBColorTemp;
   ISP_CMD_ISPGainStaticTypeDef     ISPGainStatic;
   ISP_CMD_ColorConvStaticTypeDef   colorConvStatic;
   ISP_CMD_StatisticsUpTypeDef      statisticsUp;
@@ -295,6 +359,8 @@ typedef union {
   ISP_CMD_SensorDelayMeasureTypeDef sensorDelayMeasure;
   ISP_CMD_FirmwareConfigTypeDef    firmwareConfig;
   ISP_CMD_MetadataOutputTypeDef    metadataOutput;
+  ISP_CMD_FramedataTypeDef         framedata;
+  ISP_CMD_HostOsTypeDef            hostOsType;
 } ISP_CMD_TypeDef;
 
 /* Private constants ---------------------------------------------------------*/
@@ -312,7 +378,8 @@ static ISP_StatusTypeDef ISP_CmdParser_StatDownCb(ISP_AlgoTypeDef *pAlgo);
 /* Private variables ---------------------------------------------------------*/
 static ISP_SVC_StatStateTypeDef ISP_CmdParser_stats;
 
-extern uint32_t current_awb_profId;
+static ISP_HostOsTypeDef ISP_HostOsType = ISP_HOST_OS_UNKNOWN;
+
 extern ISP_MetaTypeDef Meta;
 
 /**
@@ -326,6 +393,25 @@ ISP_StatusTypeDef ISP_CmdParser_ProcessCommand(ISP_HandleTypeDef *hIsp, uint8_t 
 {
   ISP_StatusTypeDef ret = ISP_OK;
   ISP_CMD_TypeDef *c = (ISP_CMD_TypeDef *)cmd;
+  ISP_CMD_TypeDef c_err = { 0 };
+  ISP_StatusTypeDef isp_status;
+
+  isp_status = ISP_GetStatus(hIsp);
+  if ((isp_status != ISP_OK) && (c->base.header.id != ISP_CMD_FIRMWARECONFIG))
+  {
+    /* For any command except FirmwareConfig return an error if the ISP overall status is 'error' */
+    c_err.base.header.operation = c->base.header.operation == ISP_CMD_OP_SET ? ISP_CMD_OP_SET_FAILURE : ISP_CMD_OP_GET_FAILURE;
+    c_err.base.header.id = c->base.header.id;
+    c_err.base.header.dummy[0] = isp_status;
+
+    /* Free the received message just before sending the answer message */
+    ISP_ToolCom_PrepareNextCommand();
+
+    /* Send command answer */
+    ISP_ToolCom_SendData((uint8_t*)&c_err, sizeof(c_err), NULL, NULL);
+
+    return ISP_OK;
+  }
 
   switch(c->base.header.operation)
   {
@@ -391,6 +477,21 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
   cmd_id = c.base.header.id;
   switch(cmd_id)
   {
+  case ISP_CMD_HOST_OS_TYPE:
+    switch (c.hostOsType.data)
+    {
+    case ISP_HOST_OS_LINUX:
+    case ISP_HOST_OS_WINDOWS:
+    case ISP_HOST_OS_MAC:
+      ISP_HostOsType = c.hostOsType.data;
+      ret = ISP_OK;
+      break;
+    default:
+      ret = ISP_ERR_CMDPARSER_COMMAND;
+      break;
+    }
+    break;
+
   case ISP_CMD_STATREMOVAL:
     /* Update both ISP and IQ params */
     ret = ISP_SVC_ISP_SetStatRemoval(hIsp, &c.statRemoval.data);
@@ -511,10 +612,23 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
     IQParamConfig->AECAlgo.antiFlickerFreq = c.AECAlgo.data.antiFlickerFreq;
     break;
 
+  case ISP_CMD_LUXREF:
+    /* Update only IQ params, the algo will consider this update at its next process call */
+    IQParamConfig->luxRef = c.luxRef.data;
+    break;
+
   case ISP_CMD_AWBALGO:
     /* Update only IQ params, the algo will consider this update at its next process call */
+    uint8_t originalRefRGB[ISP_AWB_COLORTEMP_REF][3];
+    memcpy(originalRefRGB, IQParamConfig->AWBAlgo.referenceRGB, sizeof(IQParamConfig->AWBAlgo.referenceRGB));
     IQParamConfig->AWBAlgo.enable = c.AWBAlgo.data.enable;
     IQParamConfig->AWBAlgo = c.AWBAlgo.data;
+    /* Patch for IQTune that does not handle the referenceRGB new params (IQTune would set all the referenceRGB to 0) */
+    if ((c.AWBAlgo.data.referenceRGB[0][0] == 0) && (c.AWBAlgo.data.referenceColorTemp[0] != 0))
+    {
+      /* Restore original parameters */
+      memcpy(IQParamConfig->AWBAlgo.referenceRGB, originalRefRGB, sizeof(IQParamConfig->AWBAlgo.referenceRGB));
+    }
     if (IQParamConfig->AWBAlgo.enable)
     {
       IQParamConfig->AWBAlgo.enable = ISP_AWB_ENABLE_RECONFIGURE;
@@ -597,7 +711,6 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
   case ISP_CMD_METADATA_OUTPUT:
     Meta.outputEnable = c.metadataOutput.enable;
     break;
-
 
   default:
     ret = ISP_ERR_CMDPARSER_COMMAND;
@@ -692,13 +805,30 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
     c.AECAlgo.data = IQParamConfig->AECAlgo;
     break;
 
+  case ISP_CMD_LUXREF:
+    c.luxRef.data = IQParamConfig->luxRef;
+    break;
+
   case ISP_CMD_AWBALGO:
     c.AWBAlgo.data = IQParamConfig->AWBAlgo;
     break;
 
   case ISP_CMD_AWBPROFILE:
-    strcpy(c.AWBProfile.data.id, IQParamConfig->AWBAlgo.id[current_awb_profId]);
-    c.AWBProfile.data.referenceColorTemp = IQParamConfig->AWBAlgo.referenceColorTemp[current_awb_profId];
+    /* This command is deprecated since AWB interpolates between profiles */
+    strcpy(c.AWBProfile.data.label, "");
+    c.AWBProfile.data.referenceColorTemp = 0;
+    break;
+
+  case ISP_CMD_AWBCOLORTEMP:
+    if (IQParamConfig->AWBAlgo.enable)
+    {
+      c.AWBColorTemp.colortemp = Meta.colorTemp;
+    }
+    else
+    {
+      /* null value indicates that there is no possible estimation when AWB algorithm is not running */
+      c.AWBColorTemp.colortemp = 0;
+    }
     break;
 
   case ISP_CMD_ISPGAINSTATIC:
@@ -760,6 +890,11 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
     ret = ISP_GetStatArea(hIsp, &c.statArea.data);
     break;
 
+  case ISP_CMD_USER_LUX:
+    /* Call the application API */
+    ret = ISP_GetLuxEstimation(hIsp, &c.lux.estimation);
+    break;
+
   case ISP_CMD_GAMMA:
     /* This command is deprecated since unique gamma command is now available */
     ret = ISP_ERR_CMDPARSER_COMMAND;
@@ -770,7 +905,15 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
     break;
 
   case ISP_CMD_SENSORINFO:
-    c.sensorInfo.data = hIsp->sensorInfo;
+    strcpy(c.sensorInfo.data.name, hIsp->sensorInfo.name);
+    c.sensorInfo.data.bayer_pattern = hIsp->sensorInfo.bayer_pattern;
+    c.sensorInfo.data.color_depth = hIsp->sensorInfo.color_depth;
+    c.sensorInfo.data.width = hIsp->sensorInfo.width;
+    c.sensorInfo.data.height = hIsp->sensorInfo.height;
+    c.sensorInfo.data.gain_min = hIsp->sensorInfo.gain_min;
+    c.sensorInfo.data.gain_max = hIsp->sensorInfo.gain_max;
+    c.sensorInfo.data.exposure_min = hIsp->sensorInfo.exposure_min;
+    c.sensorInfo.data.exposure_max = hIsp->sensorInfo.exposure_max;
     break;
 
   case ISP_CMD_SENSORDELAY:
@@ -788,6 +931,35 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
 
   case ISP_CMD_METADATA_OUTPUT:
     c.metadataOutput.enable = Meta.outputEnable;
+    break;
+
+  case ISP_CMD_FRAMEDATA:
+    c.framedata.exposure = Meta.exposure;
+    c.framedata.gain = Meta.gain;
+    if (IQParamConfig->AECAlgo.enable){
+      c.framedata.luxEstimation = Meta.lux;
+    }
+    else
+    {
+      uint32_t lux;
+      ret = ISP_GetLuxEstimation(hIsp, &lux);
+      if (ret != ISP_OK){
+        /* Since this command is called frequently and to prevent the ISP IQTUNE application from locking up,
+           we choose to ignore the ISP error and return lux = 0 to indicate that the value cannot be estimated */
+        ret = ISP_OK;
+        lux = 0;
+      }
+      c.framedata.luxEstimation = (int32_t)lux;
+    }
+    if (IQParamConfig->AWBAlgo.enable)
+    {
+      c.framedata.colortemp = Meta.colorTemp;
+    }
+    else
+    {
+      /* null value indicates that there is no possible estimation when AWB algorithm is not running */
+      c.framedata.colortemp = 0;
+    }
     break;
 
   default:
@@ -815,7 +987,7 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
     ISP_ToolCom_SendData((uint8_t*)&c, sizeof(c), NULL, NULL);
   }
 
-  /* Send dump buffer if requested  */
+  /* Send dump buffer if requested */
   if (((cmd_id == ISP_CMD_DUMP_PREVIEW_FRAME) || (cmd_id == ISP_CMD_DUMP_ISP_FRAME) || (cmd_id == ISP_CMD_DUMP_RAW_FRAME)) && (ret == ISP_OK))
   {
     ISP_CmdParser_SendDumpData((uint8_t*)pFrame, c.dumpFrameMeta.data.size);
@@ -838,7 +1010,10 @@ static void ISP_CmdParser_SendDumpData(uint8_t* pFrame, uint32_t size)
   char dump_start_msg[32];
   char dump_stop_msg[32];
 
-  if (size > ISP_MAX_DUMP_SIZE) {
+  usbx_warn_dump_status(true);
+
+  if ((ISP_HostOsType == ISP_HOST_OS_WINDOWS) && (size > ISP_MAX_DUMP_SIZE))
+  {
     /* Split the data in several parts */
     do {
       if (first)
@@ -862,6 +1037,12 @@ static void ISP_CmdParser_SendDumpData(uint8_t* pFrame, uint32_t size)
 
       pFrame += sizeToSend;
       remaining -= sizeToSend;
+
+      /* Dirty hack that allows to dump frame with windows environment
+       * It slow down new transmission after having receive the acknowledgement.
+       */
+      for (uint32_t i = 0 ; i < 30000 ; i++);
+
     } while (remaining > 0);
   }
   else
@@ -871,6 +1052,8 @@ static void ISP_CmdParser_SendDumpData(uint8_t* pFrame, uint32_t size)
     sprintf(dump_stop_msg, "%s]", ISP_DUMP_DATA_STR);
     ISP_ToolCom_SendData((uint8_t*)pFrame, size, dump_start_msg, dump_stop_msg);
   }
+
+  usbx_warn_dump_status(false);
 }
 
 /**
@@ -908,7 +1091,7 @@ static ISP_StatusTypeDef ISP_CmdParser_StatDownCb(ISP_AlgoTypeDef *pAlgo)
   /* Send the answer command */
   cmd.base.header.id = ISP_CMD_STATISTICDOWN;
   cmd.base.header.operation = ISP_CMD_OP_GET_OK;
-  cmd.statisticsUp.data = ISP_CmdParser_stats.down;
+  cmd.statisticsDown.data = ISP_CmdParser_stats.down;
 
   ISP_ToolCom_SendData((uint8_t*)&cmd, sizeof(cmd), NULL, NULL);
 

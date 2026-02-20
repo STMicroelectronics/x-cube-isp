@@ -60,6 +60,8 @@
 #define VD6G_REG_FORMAT_CTRL                 0x030a
 #define VD6G_REG_OIF_CTRL                    0x030c
 #define VD6G_REG_OIF_IMG_CTRL                0x030f
+  #define VD6G_RAW8_DATA_TYPE                0x2a
+  #define VD6G_RAW10_DATA_TYPE               0x2b
 #define VD6G_REG_OIF_CSI_BITRATE             0x0312
 #define VD6G_REG_DUSTER_CTRL                 0x0318
   #define VD6G_DUSTER_CTRL_DISABLE           0
@@ -325,7 +327,7 @@ static int VD6G_PollReg8(VD6G_Ctx_t *ctx, uint16_t addr, uint8_t poll_val)
   return -1;
 }
 
-static int VD6G_GetLineTimeInUs(VD6G_Ctx_t *ctx, uint32_t *line_time_in_us)
+static int VD6G_GetLineTimeInNs(VD6G_Ctx_t *ctx, uint32_t *line_time_in_ns)
 {
   uint16_t line_len;
   int ret;
@@ -333,8 +335,8 @@ static int VD6G_GetLineTimeInUs(VD6G_Ctx_t *ctx, uint32_t *line_time_in_us)
   ret = ctx->read16(ctx, VD6G_LINE_LENGTH, &line_len);
   VD6G_TraceError(ctx, ret);
 
-  /* compute line_time_in_us */
-  *line_time_in_us = ((uint64_t)line_len * 1000000) / VD6G_PIXEL_CLOCK;
+  /* compute line_time_in_ns */
+  *line_time_in_ns = ((uint64_t)line_len * 1000000000) / VD6G_PIXEL_CLOCK;
 
   return 0;
 }
@@ -724,6 +726,8 @@ static int VD6G_SetupClocks(VD6G_Ctx_t *ctx)
 static int VD6G_SetupOutput(VD6G_Ctx_t *ctx)
 {
   VD6G_OutItf_Config_t *out_itf = &ctx->ctx.config_save.out_itf;
+  uint8_t pixel_depth = ctx->ctx.config_save.pixel_depth;
+  uint8_t data_type;
   uint16_t oif_ctrl;
   int ret;
 
@@ -735,8 +739,12 @@ static int VD6G_SetupOutput(VD6G_Ctx_t *ctx)
   out_itf->data_lane1_swap_enable = !!out_itf->data_lane1_swap_enable;
   out_itf->data_lanes_mapping_swap_enable = !!out_itf->data_lanes_mapping_swap_enable;
 
-  /* raw8 */
-  ret = ctx->write8(ctx, VD6G_REG_FORMAT_CTRL, VD6G_COLOR_DEPTH_RAW8);
+  if (pixel_depth == 10)
+    data_type = VD6G_RAW10_DATA_TYPE;
+  else
+    data_type = VD6G_RAW8_DATA_TYPE;
+
+  ret = ctx->write8(ctx, VD6G_REG_FORMAT_CTRL, pixel_depth);
   VD6G_TraceError(ctx, ret);
 
   /* csi lanes */
@@ -754,7 +762,7 @@ static int VD6G_SetupOutput(VD6G_Ctx_t *ctx)
   VD6G_TraceError(ctx, ret);
 
   /* data type */
-  ret = ctx->write8(ctx, VD6G_REG_OIF_IMG_CTRL, 0x2a);
+  ret = ctx->write8(ctx, VD6G_REG_OIF_IMG_CTRL, data_type);
   VD6G_TraceError(ctx, ret);
 
   return 0;
@@ -1069,6 +1077,9 @@ int VD6G_Init(VD6G_Ctx_t *ctx, VD6G_Config_t *config)
     return -1;
   }
 
+  if ((config->pixel_depth != 8) && (config->pixel_depth != 10))
+    return -1;
+
   ctx->shutdown_pin(ctx, 0);
   ctx->delay(ctx, 10);
   ctx->shutdown_pin(ctx, 1);
@@ -1297,18 +1308,18 @@ int VD6G_SetDigitalGain(VD6G_Ctx_t *ctx, int gain)
 int VD6G_GetExposureRegRange(VD6G_Ctx_t *ctx, uint32_t *min_us, uint32_t *max_us)
 {
   uint16_t exp_coarse_intg_margin;
-  uint32_t line_time_in_us;
+  uint32_t line_time_in_ns;
   uint16_t frame_length;
   int ret;
 
   if ((min_us == NULL) || (max_us == NULL))
     return -1;
 
-  ret = VD6G_GetLineTimeInUs(ctx, &line_time_in_us);
+  ret = VD6G_GetLineTimeInNs(ctx, &line_time_in_ns);
   if (ret)
     return ret;
 
-  *min_us = VD6G_MIN_MANUAL_EXP_COARSE * line_time_in_us;
+  *min_us = (VD6G_MIN_MANUAL_EXP_COARSE * line_time_in_ns) / 1000;
 
   ret = ctx->read16(ctx, VD6G_FRAME_LENGTH, &frame_length);
   VD6G_TraceError(ctx, ret);
@@ -1317,7 +1328,7 @@ int VD6G_GetExposureRegRange(VD6G_Ctx_t *ctx, uint32_t *min_us, uint32_t *max_us
   VD6G_TraceError(ctx, ret);
 
   if (exp_coarse_intg_margin >= VD6G_MIN_EXP_COARSE_INTG_MARGIN)
-    *max_us = (frame_length - exp_coarse_intg_margin - VD6G_MAX_MANUAL_EXP_COARSE_OFFSET) * line_time_in_us;
+    *max_us = ((frame_length - exp_coarse_intg_margin - VD6G_MAX_MANUAL_EXP_COARSE_OFFSET) * line_time_in_ns) / 1000;
   else
     return -1;
 
@@ -1328,7 +1339,7 @@ int VD6G_SetExposureTime(VD6G_Ctx_t *ctx, int exposure_us)
 {
   int32_t ret;
   uint32_t exp_min, exp_max;
-  uint32_t line_time_in_us;
+  uint32_t line_time_in_ns;
 
   ret = VD6G_GetExposureRegRange(ctx, &exp_min, &exp_max);
   if (ret)
@@ -1338,11 +1349,11 @@ int VD6G_SetExposureTime(VD6G_Ctx_t *ctx, int exposure_us)
   if (ret)
     return ret;
 
-  ret = VD6G_GetLineTimeInUs(ctx, &line_time_in_us);
+  ret = VD6G_GetLineTimeInNs(ctx, &line_time_in_ns);
   if (ret)
     return ret;
 
-  ret = ctx->write16(ctx, VD6G_REG_MANUAL_COARSE_EXP, CEIL(exposure_us / line_time_in_us));
+  ret = ctx->write16(ctx, VD6G_REG_MANUAL_COARSE_EXP, CEIL(1000 * exposure_us / line_time_in_ns));
   VD6G_TraceError(ctx, ret);
 
   return 0;

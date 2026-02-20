@@ -23,21 +23,49 @@ This driver provides a set of functions offered by IMX335 camera sensor componen
 # Update history
 
 ::: {.collapse}
-<input type="checkbox" id="collapse-section6" checked aria-hidden="true">
-<label for="collapse-section6" aria-hidden="true">__V1.3.1-cmw-patch / November-2024__</label>
+<input type="checkbox" id="collapse-section7" aria-hidden="true">
+<label for="collapse-section7" aria-hidden="true">__V1.3.2-cmw-patch / December-2025__</label>
 <div>
 
 ## Main changes
 
 - Remove IMX335_CAMERA_Driver and IMX335_GetSensorInfo.
 - Add start and stop functions.
+- Fix min exposure value.
+- Add max analog gain definition.
+
+## Dependencies
+
+- This software release is compatible with:
+	- Camera Middleware v1.5.0
+
+</div>
+:::
+
+::: {.collapse}
+<input type="checkbox" id="collapse-section6" aria-hidden="true">
+<label for="collapse-section6" aria-hidden="true">__V1.3.2 / 16-September-2025__</label>
+<div>
+
+## Main changes
+
+- Add README.md file
+
+## Backward Compatibility
+
+None
+
+## Dependencies
+
+- This software release is compatible with:
+	- BSP Common v7.3.0 or above
 
 </div>
 :::
 
 
 ::: {.collapse}
-<input type="checkbox" id="collapse-section5" aria-hidden="true">
+<input type="checkbox" id="collapse-section5"  aria-hidden="true">
 <label for="collapse-section5" aria-hidden="true">__V1.3.1 / 22-October-2024__</label>
 <div>
 

@@ -19,11 +19,11 @@
 #ifndef CMW_UTILS
 #define CMW_UTILS
 
-#include "stm32n6xx_hal_dcmipp.h"
+#include "stm32n6xx_hal.h"
 #include "cmw_camera.h"
 
 
-
+int32_t CMW_UTILS_getClosest_HAL_PHYBitrate(uint32_t val);
 void CMW_UTILS_GetPipeConfig(uint32_t cam_width, uint32_t cam_height, CMW_DCMIPP_Conf_t *p_conf,
                                     DCMIPP_CropConfTypeDef *crop, DCMIPP_DecimationConfTypeDef *dec,
                                     DCMIPP_DownsizeTypeDef *down);

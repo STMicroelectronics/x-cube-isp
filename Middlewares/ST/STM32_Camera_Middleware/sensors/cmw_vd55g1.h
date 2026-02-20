@@ -26,11 +26,13 @@
 #include "cmw_sensors_if.h"
 #include "cmw_errno.h"
 #include "vd55g1.h"
+#include "cmw_camera.h"
+
+#define VD55G1_NAME    "VD55G1"
 
 typedef struct
 {
   uint16_t Address;
-  uint32_t ClockInHz;
   VD55G1_Ctx_t ctx_driver;
   uint8_t IsInitialized;
   int32_t (*Init)(void);
@@ -44,6 +46,8 @@ typedef struct
 } CMW_VD55G1_t;
 
 int CMW_VD55G1_Probe(CMW_VD55G1_t *io_ctx, CMW_Sensor_if_t *vd55g1_if);
+void CMW_VD55G1_SetDefaultSensorValues(CMW_VD55G1_config_t *vd55g1_config);
+
 
 #ifdef __cplusplus
 }

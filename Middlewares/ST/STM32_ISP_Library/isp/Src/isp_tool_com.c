@@ -20,8 +20,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "isp_core.h"
 #include "isp_tool_com.h"
-#include "usbd_cdc_if.h"
-#include "usb_device.h"
+#include "usbx.h"
 
 /* Private constants ---------------------------------------------------------*/
 #define RX_PACKET_SIZE 512
@@ -46,7 +45,9 @@ ISP_ToolCom_packet_t received_packet;
   */
 void ISP_ToolCom_Init(void)
 {
-  MX_USB_DEVICE_Init();
+  int ret;
+  ret = usb_init(USB1_OTG_HS);
+  assert(ret == 0);
 
   /* Clear packet */
   received_packet.payload_size = 0;
@@ -54,7 +55,7 @@ void ISP_ToolCom_Init(void)
 
 /**
   * @brief  ISP_ToolCom_ReceivedCb
-  *         Callback received when data are received
+  *         Callback called when data are received
   * @param  buffer: Pointer to buffer payload
   * @param  buffer_size: Size of buffer payload
   * @retval None
@@ -96,22 +97,23 @@ void ISP_ToolCom_ReceivedCb(uint8_t *buffer, uint32_t buffer_size)
   *         Send a packet (message or/and payload)
   * @param  buffer: Pointer to buffer payload
   * @param  buffer_size: Size of buffer payload
-  * @param  message: Pointer to message string
+  * @param  dump_start_msg: Pointer to message string
+  * @param  dump_stop_msg: Pointer to message string
   * @retval None
   */
-void ISP_ToolCom_SendData(uint8_t *buffer, uint32_t buffer_size, char *dump_start_msg,  char *dump_stop_msg)
+void ISP_ToolCom_SendData(uint8_t *buffer, uint32_t buffer_size, char *dump_start_msg, char *dump_stop_msg)
 {
   if (dump_start_msg)
   {
-	USB_CDC_Send_Wrapper_Function((uint8_t*) dump_start_msg, strlen((char*)dump_start_msg));
+    usbx_write((uint8_t*) dump_start_msg, strlen((char*)dump_start_msg));
   }
   if (buffer)
   {
-	USB_CDC_Send_Wrapper_Function(buffer, buffer_size);
+    usbx_write(buffer, buffer_size);
   }
   if (dump_stop_msg)
   {
-	USB_CDC_Send_Wrapper_Function((uint8_t*) dump_stop_msg, strlen((char*)dump_stop_msg));
+    usbx_write((uint8_t*) dump_stop_msg, strlen((char*)dump_stop_msg));
   }
 }
 

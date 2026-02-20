@@ -3142,7 +3142,7 @@ static int32_t CS42L51_PowerDown(void)
 static void SAI_MspInit(SAI_HandleTypeDef *hsai)
 {
   GPIO_InitTypeDef  gpio_init_structure;
-  static DMA_NodeTypeDef TxNode, RxNode;
+  static DMA_NodeTypeDef TxNode, RxNode __NON_CACHEABLE;
   static DMA_NodeConfTypeDef dmaNodeConfig;
 
   /* Enable SAI clock */

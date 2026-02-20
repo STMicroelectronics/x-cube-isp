@@ -81,6 +81,7 @@ typedef enum
   ISP_ERR_APP_HELPER_UNDEFINED  = 180,
   ISP_ERR_ALGO                  = 190,
   ISP_ERR_SENSORTESTPATTERN     = 200,
+  ISP_ERR_AWB                   = 210,
 } ISP_StatusTypeDef;
 
 /* ISP statistic area */
@@ -158,57 +159,10 @@ typedef struct
   uint32_t height;
   uint32_t gain_min;
   uint32_t gain_max;
+  uint32_t again_max;
   uint32_t exposure_min;
   uint32_t exposure_max;
 } ISP_SensorInfoTypeDef;
-
-/* ISP application helpers providing control of non ISP features */
-typedef struct
-{
-  /* [OPTIONAL] Enable the camera preview on the LCD display */
-  ISP_StatusTypeDef (*StartPreview)(void *pHdcmipp);
-  /* [OPTIONAL] Disable the camera preview on the LCD display */
-  ISP_StatusTypeDef (*StopPreview)(void *pHdcmipp);
-  /* [OPTIONAL] Dump a frame of the camera pipeline. The parameters are:
-  *    pHdcmipp:  DCMIPP device handle.
-  *    Pipe:      Pipe where to perform the dump ('DUMP'(0) or 'ANCILLARY'(2))
-  *    Config:    Dump with the current pipe config, or without downsizing with
-  *               a specific pixel format.
-  *    pBuffer:   Pointer to the address of the dumped buffer (output parameter)
-  *    pMeta:     Pointer to buffer meta data (output parameter)
-  */
-  ISP_StatusTypeDef (*DumpFrame)(void *pHdcmipp,
-                                 uint32_t Pipe,
-                                 ISP_DumpCfgTypeDef Config,
-                                 uint32_t **pBuffer,
-                                 ISP_DumpFrameMetaTypeDef *pMeta);
-  /* [MANDATORY] Get sensor info */
-  ISP_StatusTypeDef (*GetSensorInfo)(uint32_t Instance, ISP_SensorInfoTypeDef *Info);
-  /* [MANDATORY] Set sensor gain */
-  ISP_StatusTypeDef (*SetSensorGain)(uint32_t Instance, int32_t Gain);
-  /* [MANDATORY] Get sensor gain */
-  ISP_StatusTypeDef (*GetSensorGain)(uint32_t Instance, int32_t *Gain);
-  /* [MANDATORY] Set sensor exposure */
-  ISP_StatusTypeDef (*SetSensorExposure)(uint32_t Instance, int32_t Exposure);
-  /* [MANDATORY] Get sensor exposure */
-  ISP_StatusTypeDef (*GetSensorExposure)(uint32_t Instance, int32_t *Exposure);
-  /* [OPTIONAL] Set sensor test pattern */
-  ISP_StatusTypeDef (*SetSensorTestPattern)(uint32_t Instance, int32_t mode);
-} ISP_AppliHelpersTypeDef;
-
-/* ISP Device handle structure */
-typedef struct
-{
-  void *hDcmipp;
-  uint32_t cameraInstance;
-  ISP_StatAreaTypeDef statArea;
-  ISP_AlgoTypeDef **algorithm;
-  ISP_AppliHelpersTypeDef appliHelpers;
-  uint32_t MainPipe_FrameCount;
-  uint32_t AncillaryPipe_FrameCount;
-  uint32_t DumpPipe_FrameCount;
-  ISP_SensorInfoTypeDef sensorInfo;
-} ISP_HandleTypeDef;
 
 /* ISP Demosaicing type */
 typedef enum
@@ -340,7 +294,7 @@ typedef struct
   uint8_t enable;                               /* Enable or disable */
   ISP_ExposureCompTypeDef exposureCompensation; /* Exposure Compensation (in EV) */
   uint32_t exposureTarget;                      /* Exposure Target */
-  ISP_AntiFlickerTypeDef antiFlickerFreq;       /* AntiFlicker frequency (50Hz, 60Hz  or 0 for disabling the feature */
+  ISP_AntiFlickerTypeDef antiFlickerFreq;       /* AntiFlicker frequency (50Hz, 60Hz or 0 for disabling the feature */
 } ISP_AECAlgoTypeDef;
 
 #define ISP_AWB_COLORTEMP_REF               (5U)
@@ -349,17 +303,18 @@ typedef struct
 typedef struct
 {
   uint8_t enable;             /* Enable or disable */
-  char id[ISP_AWB_COLORTEMP_REF][ISP_AWB_PROFILE_ID_MAX_LENGTH]; /* Array of profile names for identification */
+  char label[ISP_AWB_COLORTEMP_REF][ISP_AWB_PROFILE_ID_MAX_LENGTH]; /* Array of profile names for identification */
   uint32_t referenceColorTemp[ISP_AWB_COLORTEMP_REF]; /* Array of reference color temperatures */
   uint32_t ispGainR[ISP_AWB_COLORTEMP_REF];   /* Array of gains of the red component. Unit = 100000000 for "x1.0", 150000000 for "x1.5". Max gain is "x255" */
   uint32_t ispGainG[ISP_AWB_COLORTEMP_REF];   /* Array of gains of the green component */
   uint32_t ispGainB[ISP_AWB_COLORTEMP_REF];   /* Array of gains of the blue component */
   int32_t coeff[ISP_AWB_COLORTEMP_REF][3][3]; /* Array of 3x3 RGB to RGB matrix coefficients. Unit = 100000000 for "x1.0", -150000000 for "x-1.5". Range is "x-4.0" to "x4.0" */
+  uint8_t referenceRGB[ISP_AWB_COLORTEMP_REF][3]; /* Array of reference RGB components */
 } ISP_AWBAlgoTypeDef;
 
 typedef struct
 {
-  char id[ISP_AWB_PROFILE_ID_MAX_LENGTH]; /* profile name for identification */
+  char label[ISP_AWB_PROFILE_ID_MAX_LENGTH]; /* profile name for identification */
   uint32_t referenceColorTemp;            /* reference color temperature */
 } ISP_AWBProfileTypeDef;
 
@@ -384,13 +339,35 @@ typedef struct
   uint8_t averageB;           /* Average of the blue component */
   uint8_t averageL;           /* Average of the Luminance */
   uint32_t histogram[12];     /* Histogram of the L, R, G or B component */
+  float weight;               /* Weigth of the statistic. In case of multiple statistic area are processed, it dictates the contribution to the final computed output of the algorithm */
 } ISP_StatisticsTypeDef;
+
+typedef struct
+{
+  uint8_t nbAreas;              /* Number of statistic areas */
+  ISP_StatisticsTypeDef* stats; /* Pointer on the array hosting the statistics of each area */
+} ISP_ExternalStatsTypeDef;
 
 /* Sensor delay */
 typedef struct
 {
   uint8_t delay;              /* Sensor delay */
 } ISP_SensorDelayTypeDef;
+
+typedef struct
+{
+  uint32_t HL_LuxRef;          /* High lux value reference for calibration */
+  uint32_t HL_Expo1;           /* Exposure value of the 1st reference point in high lux condition (in us) */
+  uint8_t  HL_Lum1;            /* Down luminance value of the 1st reference point in high lux condition */
+  uint32_t HL_Expo2;           /* Exposure value of the 2nd reference point in high lux condition (in us) */
+  uint8_t  HL_Lum2;            /* Down luminance value of the 2nd reference point in high lux condition */
+  uint32_t LL_LuxRef;          /* Low lux value reference for calibration */
+  uint32_t LL_Expo1;           /* Exposure value of the 1st reference point in low lux condition (in us) */
+  uint8_t  LL_Lum1;            /* Down luminance value of the 1st reference point in low lux condition */
+  uint32_t LL_Expo2;           /* Exposure value of the 2nd reference point in low lux condition (in us) */
+  uint8_t  LL_Lum2;            /* Down luminance value of the 2nd reference point in low lux condition */
+  float    calibFactor;        /* Specific sensor calibration factor based on empirical measurements */
+} ISP_LuxReferenceTypedef;
 
 /* Firmware config. Warning : to add a new member, append it (at then end), never insert it in the middle (or you will die) */
 typedef struct
@@ -404,6 +381,8 @@ typedef struct
   uint32_t uId[3];            /* Unique Identifier (3 x 32 bits) */
   uint32_t hasSensorDelay;    /* Whether the firmware supports the Sensor Delay feature */
   uint32_t hasUniqueGamma;    /* Whether the firmware supports the Gamma Correction feature with a unique gamma value for both pipe1 and pipe2 */
+  uint32_t hasUVC;            /* Whether the firmware supports UVC video streaming */
+  uint32_t hasSTAlgo;         /* Whether the firmware supports the new ST 2a Algorithms */
 } ISP_FirmwareConfigTypeDef;
 
 /* Meta data will transit through STLINK if validation test is enabled */
@@ -415,6 +394,7 @@ typedef struct
   uint32_t gain;              /* Gain in mdB */
   uint32_t exposure;          /* Exposure time in micro seconds */
   uint32_t colorTemp;
+  uint32_t lux;
 } ISP_MetaTypeDef;
 
 /* IQ parameter */
@@ -435,13 +415,75 @@ typedef struct
   ISP_ColorConvTypeDef colorConvStatic;
   ISP_GammaTypeDef gamma;
   ISP_SensorDelayTypeDef sensorDelay;
+  ISP_LuxReferenceTypedef luxRef;
 } ISP_IQParamTypeDef;
+
+/* Restart state */
+typedef struct
+{
+  uint8_t sensorConfigured;
+  uint32_t sensorGain;
+  uint32_t sensorExposure;
+  uint8_t awbConfigured;
+  ISP_ColorConvTypeDef colorConv;
+  ISP_ISPGainTypeDef ISPGain;
+} ISP_RestartStateTypeDef;
+
+/* ISP application helpers providing control of non ISP features */
+typedef struct
+{
+  /* [OPTIONAL] Enable the camera preview on the LCD display */
+  ISP_StatusTypeDef (*StartPreview)(void *pHdcmipp);
+  /* [OPTIONAL] Disable the camera preview on the LCD display */
+  ISP_StatusTypeDef (*StopPreview)(void *pHdcmipp);
+  /* [OPTIONAL] Dump a frame of the camera pipeline. The parameters are:
+  *    pHdcmipp:  DCMIPP device handle.
+  *    Pipe:      Pipe where to perform the dump ('DUMP'(0) or 'ANCILLARY'(2))
+  *    Config:    Dump with the current pipe config, or without downsizing with
+  *               a specific pixel format.
+  *    pBuffer:   Pointer to the address of the dumped buffer (output parameter)
+  *    pMeta:     Pointer to buffer meta data (output parameter)
+  */
+  ISP_StatusTypeDef (*DumpFrame)(void *pHdcmipp,
+                                 uint32_t Pipe,
+                                 ISP_DumpCfgTypeDef Config,
+                                 uint32_t **pBuffer,
+                                 ISP_DumpFrameMetaTypeDef *pMeta);
+  /* [MANDATORY] Get sensor info */
+  ISP_StatusTypeDef (*GetSensorInfo)(uint32_t Instance, ISP_SensorInfoTypeDef *Info);
+  /* [MANDATORY] Set sensor gain */
+  ISP_StatusTypeDef (*SetSensorGain)(uint32_t Instance, int32_t Gain);
+  /* [MANDATORY] Get sensor gain */
+  ISP_StatusTypeDef (*GetSensorGain)(uint32_t Instance, int32_t *Gain);
+  /* [MANDATORY] Set sensor exposure */
+  ISP_StatusTypeDef (*SetSensorExposure)(uint32_t Instance, int32_t Exposure);
+  /* [MANDATORY] Get sensor exposure */
+  ISP_StatusTypeDef (*GetSensorExposure)(uint32_t Instance, int32_t *Exposure);
+  /* [OPTIONAL] Set sensor test pattern */
+  ISP_StatusTypeDef (*SetSensorTestPattern)(uint32_t Instance, int32_t mode);
+  /* [OPTIONAL] Get external statistics to consider for the 2A algorithms */
+  ISP_StatusTypeDef (*GetExternalStatistics)(uint32_t Instance, ISP_ExternalStatsTypeDef *Stats);
+} ISP_AppliHelpersTypeDef;
+
+/* ISP Device handle structure */
+typedef struct
+{
+  void *hDcmipp;
+  uint32_t cameraInstance;
+  ISP_StatAreaTypeDef statArea;
+  ISP_AlgoTypeDef **algorithm;
+  ISP_AppliHelpersTypeDef appliHelpers;
+  uint32_t MainPipe_FrameCount;
+  uint32_t AncillaryPipe_FrameCount;
+  uint32_t DumpPipe_FrameCount;
+  ISP_SensorInfoTypeDef sensorInfo;
+} ISP_HandleTypeDef;
 
 /* Exported constants --------------------------------------------------------*/
 #define ISP_DEMOS_STRENGTH_MAX              (7U)
 #define ISP_STATREMOVAL_HEADLINES_MAX       (7U)
 #define ISP_STATREMOVAL_VALIDLINES_MAX      (4094U)
-#define ISP_CONTAST_LUMCOEFF_MAX            (394U)
+#define ISP_CONTRAST_LUMCOEFF_MAX           (394U)
 #define ISP_BADPIXEL_STRENGTH_MAX           (7U)
 #define ISP_EXPOSURE_GAIN_MAX               (1600000000U)
 #define ISP_COLORCONV_MAX                   (399000000)
@@ -451,7 +493,7 @@ typedef struct
 
 /* A well exposed picture (taking into account the gamma correction) has its
  * Luminance average at the middle of the luminance range.
- * Here luminance range is [0, 255] so a well expose picture should have a
+ * Here luminance range is [0, 255] so a well exposed picture should have a
  * luminance equal to 128 gamma applied. In our case, the statistics are recovered
  * before the gamma correction so the target luminance for a well exposed picture
  * is 56 (((56/255)^(1/2.2))*255 = 128)
@@ -511,6 +553,7 @@ typedef struct
       : err == ISP_ERR_APP_HELPER_UNDEFINED ? "App Helper undefined" \
       : err == ISP_ERR_ALGO ? "Algo err" \
       : err == ISP_ERR_SENSORTESTPATTERN ? "Sensor Test Pattern" \
+      : err == ISP_ERR_AWB ? "AWB algo err" \
       : "Unknown error" )
 
 /* Exported functions ------------------------------------------------------- */

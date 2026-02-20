@@ -151,6 +151,7 @@ typedef struct {
   int line_len; /**< Set value to zero to let default sensor value */
   VD6G_PatGen_t patgen;
   VD6G_Flicker_t flicker;
+  uint8_t pixel_depth;
   VD6G_OutItf_Config_t out_itf;
   /* VD6G_GPIO_Mode_t | VD6G_GPIO_Value_t | VD6G_GPIO_Polarity_t */
   uint8_t gpio_ctrl[VD6G_GPIO_NB];

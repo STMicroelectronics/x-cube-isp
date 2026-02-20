@@ -33,8 +33,8 @@ typedef struct
   uint32_t width;
   uint32_t height;
   int fps;
-  uint32_t pixel_format;
   uint32_t mirrorFlip;
+  void *sensor_config; /* to pass specific config from application side*/
 } CMW_Sensor_Init_t;
 
 typedef struct
@@ -65,6 +65,7 @@ typedef struct
   int32_t (*SetFlickerMode)(void *, int32_t);
   int32_t (*GetSensorInfo)(void *, ISP_SensorInfoTypeDef *);
   int32_t (*SetTestPattern)(void *, int32_t);
+  int32_t (*GetDefaultPHYBitrate)(void *, int32_t *); /* in bps */
 } CMW_Sensor_if_t;
 
 #ifdef __cplusplus

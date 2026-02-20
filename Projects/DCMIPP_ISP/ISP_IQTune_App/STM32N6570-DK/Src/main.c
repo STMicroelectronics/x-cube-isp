@@ -28,7 +28,8 @@
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
 #include "ispiqtune_logo_argb8888.h"
 #endif  /* ISP_MW_TUNING_TOOL_SUPPORT */
-
+#include "tx_api.h"
+#include "tx_initialize.h"
 #include <stdio.h>
 
 /* Global variables ----------------------------------------------------------*/
@@ -36,6 +37,13 @@
 DCMIPP_HandleTypeDef *phDcmipp;
 ISP_HandleTypeDef    hIsp;
 
+ /* threads */
+static TX_THREAD main_thread;
+static uint8_t main_tread_stack[4096];
+
+#ifdef ISP_ENABLE_UVC
+#include "usbx_conf.h"
+#endif /* ISP_ENABLE_UVC */
 /* External function prototypes ----------------------------------------------*/
 
 /* Private typedef -----------------------------------------------------------*/
@@ -67,6 +75,7 @@ typedef struct
 #define BPP_RAW12      2
 #define BPP_RAW14      2
 #define BPP_RGB565     2
+#define BPP_YUV422     2
 #define BPP_RGB888     3
 #define BPP_ARGB8888   4
 
@@ -90,10 +99,10 @@ typedef struct
 
 /* Private variables ---------------------------------------------------------*/
 /* Frame buffers */
-/* Allocate the Main_DestBuffer (RGB888) in SRAM dedicated region */
+/* Allocate the Main_DestBuffer (YUV422) in SRAM dedicated region */
 __attribute__ ((section(".buffRam")))
 __attribute__ ((aligned (32)))
-uint8_t Main_DestBuffer[MAX_PREVIEW_BUFFER_WIDTH * MAX_PREVIEW_BUFFER_HEIGHT * BPP_RGB888];
+uint8_t Main_DestBuffer[MAX_PREVIEW_BUFFER_WIDTH * MAX_PREVIEW_BUFFER_HEIGHT * BPP_YUV422];
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
 __attribute__ ((section (".psram_bss")))
 __attribute__ ((aligned (32)))
@@ -121,12 +130,16 @@ uint32_t DisplayFramePitch;
 static UART_HandleTypeDef huart1;
 
 /* Private function prototypes -----------------------------------------------*/
+static int main_threadx(void);
+static void main_thread_fct(ULONG arg);
 static void SystemClock_Config(void);
-static void Security_Config();
-static void IAC_Config();
+static void Security_Config(void);
+static void IAC_Config(void);
 static void Console_Config(void);
 int Camera_Config(DCMIPP_HandleTypeDef **hDcmipp, uint32_t Instance);
-void Display_Config();
+void Display_Config(void);
+
+static void Setup_Mpu(void);
 
 ISP_StatusTypeDef GetSensorInfo(uint32_t camera_instance, ISP_SensorInfoTypeDef *info);
 ISP_StatusTypeDef SetSensorGain(uint32_t camera_instance, int32_t gain);
@@ -152,11 +165,11 @@ ISP_StatusTypeDef SetIPPlugConf(uint32_t Pipe0_OW, uint32_t Pipe0_PFS,
   */
 int main(void)
 {
-  uint32_t camera_instance = 0;
-  ISP_StatusTypeDef ret;
-
   /* Power on ICACHE */
   MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_ICACTIVE_Msk;
+
+  /* Disable error related to UNALIGN memory structures*/
+  SCB->CCR &= ~SCB_CCR_UNALIGN_TRP_Msk;
 
   /* Set back system and CPU clock source to HSI */
   __HAL_RCC_CPUCLK_CONFIG(RCC_CPUCLKSOURCE_HSI);
@@ -172,7 +185,87 @@ int main(void)
 
   HAL_Init();
 
-  /* Set the clock configuration */
+  Setup_Mpu();
+
+  return main_threadx();
+}
+
+static void Setup_Mpu(void)
+{
+  extern uint32_t __uncached_bss_start__;
+  extern uint32_t __uncached_bss_end__;
+
+  MPU_Attributes_InitTypeDef attr;
+  MPU_Region_InitTypeDef region;
+
+  attr.Number = MPU_ATTRIBUTES_NUMBER0;
+  attr.Attributes = MPU_NOT_CACHEABLE;
+  HAL_MPU_ConfigMemoryAttributes(&attr);
+
+  region.Enable = MPU_REGION_ENABLE;
+  region.Number = MPU_REGION_NUMBER0;
+  region.BaseAddress = (uint32_t)&__uncached_bss_start__;
+  region.LimitAddress = (uint32_t)&__uncached_bss_end__ - 1;
+  region.AttributesIndex = MPU_ATTRIBUTES_NUMBER0;
+  region.AccessPermission = MPU_REGION_ALL_RW;
+  region.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
+  region.DisablePrivExec = MPU_PRIV_INSTRUCTION_ACCESS_ENABLE;
+  region.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+  HAL_MPU_ConfigRegion(&region);
+
+  HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
+}
+
+/**
+  * @brief  The main entry function tx_application_define()
+  *         is then called by ThreadX during kernel starts.
+  */
+void tx_application_define(void *first_unused_memory)
+{
+  UNUSED(first_unused_memory);
+  const UINT priority = TX_MAX_PRIORITIES / 2 - 1;
+  const ULONG time_slice = 10;
+  int ret;
+
+  ret = tx_thread_create(&main_thread, "main", main_thread_fct, 0, main_tread_stack,
+                         sizeof(main_tread_stack), priority, priority, time_slice, TX_AUTO_START);
+  assert(ret == 0);
+}
+
+/**
+  * @brief  Initialization of ThreadX.
+  */
+static int main_threadx(void)
+{
+  _tx_initialize_kernel_setup();
+  tx_kernel_enter();
+  assert(0);
+
+  return -1;
+}
+
+/**
+  * @brief  Main ThreadX thread
+  */
+static void main_thread_fct(ULONG arg)
+{
+  UNUSED(arg);
+  uint32_t preemptPriority;
+  uint32_t subPriority;
+  IRQn_Type i;
+  uint32_t camera_instance = 0;
+  ISP_StatusTypeDef ret;
+
+  /* Copy SysTick_IRQn priority set by RTOS and use it as default priorities for IRQs. We are now sure that all irqs
+   * have default priority below or equal to configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY.
+   */
+  HAL_NVIC_GetPriority(SysTick_IRQn, HAL_NVIC_GetPriorityGrouping(), &preemptPriority, &subPriority);
+  for (i = PVD_PVM_IRQn; i <= LTDC_UP_ERR_IRQn; i++)
+    HAL_NVIC_SetPriority(i, preemptPriority, subPriority);
+
+  /* Call SystemClock_Config() after vTaskStartScheduler() since it call HAL_Delay() which call vTaskDelay(). Drawback
+   * is that we must call vPortSetupTimerInterrupt() since SystemCoreClock value has been modified by SystemClock_Config()
+   */
   SystemClock_Config();
 
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
@@ -188,7 +281,6 @@ int main(void)
 
   /* Configure UART for message log */
   Console_Config();
-
 
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
   printf("**** Initializing IQ Tuning application  ****\r\n");
@@ -225,18 +317,51 @@ int main(void)
     .SetSensorTestPattern = SetSensorTestPattern,
   };
   /* Get the sensor name connected:
-   * - IMX335 config @ ISP_IQParamCacheInit[0]
-   * - VD66GY config @ ISP_IQParamCacheInit[1]
+   * - UNKNOWN config @ ISP_IQParamCacheInit[0]
+   * - IMX335  config @ ISP_IQParamCacheInit[1]
+   * - VD66GY  config @ ISP_IQParamCacheInit[2]
+   * - VD5943  config @ ISP_IQParamCacheInit[3]
+   * - VD1943  config @ ISP_IQParamCacheInit[4]
+   * - VD65G4  config @ ISP_IQParamCacheInit[5]
+   * - VD56G3  config @ ISP_IQParamCacheInit[6]
    */
   uint8_t sensor_id = 0;
   if (strcmp(Camera_SensorConf.name, "IMX335") == 0)
   {
-    sensor_id = 0;
+    sensor_id = 1;
   }
   else if (strcmp(Camera_SensorConf.name, "VD66GY") == 0)
   {
-    sensor_id = 1;
+    sensor_id = 2;
   }
+  else if (strcmp(Camera_SensorConf.name, "VD5943") == 0)
+  {
+    sensor_id = 3;
+  }
+  else if (strcmp(Camera_SensorConf.name, "VD1943") == 0)
+  {
+    sensor_id = 4;
+  }
+  else if (strcmp(Camera_SensorConf.name, "VD65G4") == 0)
+  {
+    sensor_id = 5;
+  }
+  else if (strcmp(Camera_SensorConf.name, "VD56G3") == 0)
+  {
+    sensor_id = 6;
+  }
+  else
+  {
+    /* For application running on unknown sensor, use untuned sensor configuration*/
+    printf("INFO: Unknown sensor, select untuned configuration for isp\r\n");
+    sensor_id = 0;
+  }
+
+#ifdef ISP_ENABLE_UVC
+  /* Define the preview size and fps for the UVC streaming */
+  usb_uvc_init(Camera_SensorConf.PreviewWidth, Camera_SensorConf.PreviewHeight, 10/*fps*/);
+#endif
+
   ret = ISP_Init(&hIsp, phDcmipp, camera_instance, &appliHelpers, ISP_IQParamCacheInit[sensor_id]);
   if (ret != ISP_OK)
   {
@@ -252,7 +377,7 @@ int main(void)
 
   /* Configure the IPPlug Fifo size for each pipe */
   ret = SetIPPlugConf(Camera_SensorConf.CamImgWidth, Camera_SensorConf.BytePerPixel,
-                      Camera_SensorConf.PreviewWidth, BPP_RGB888,
+                      Camera_SensorConf.PreviewWidth, BPP_YUV422,
                       Camera_SensorConf.CamImgWidth, BPP_RGB888);
   if (ret != ISP_OK)
   {
@@ -286,6 +411,12 @@ int main(void)
   while (1)
   {
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
+    tx_thread_sleep(1);
+#ifdef ISP_ENABLE_UVC
+    int32_t uvc_tx_size = DisplayFramePitch * Camera_SensorConf.PreviewHeight;
+    usb_uvc_show_frame((uint8_t *) Main_DestBuffer, uvc_tx_size);
+#endif /* ISP_ENABLE_UVC */
+
     /* Call the ISP background task */
     ret = ISP_BackgroundProcess(&hIsp);
     if (ret != ISP_OK)
@@ -293,14 +424,13 @@ int main(void)
       printf("WARNING: ISP Background process error %d (%s)\r\n", ret, ERROR_MESSAGE(ret));
     }
 
-
     /* Get the Current statistic area that can be updated by the ISP IQTune */
     Check_StatAreaUpdate();
 #else
     ret = CMW_ERROR_NONE;
     ret = CMW_CAMERA_Run();
     assert(ret == CMW_ERROR_NONE);
-#endif  /* ISP_MW_TUNING_TOOL_SUPPORT */
+#endif /* ISP_MW_TUNING_TOOL_SUPPORT */
     /* Additional applicative processing can be implemented from here */
   }
 }
@@ -315,11 +445,11 @@ static void DCMIPP_Pipe1Config_Preview(void)
   /* Configure Pipe Main */
   dcmipp_conf.output_width = Camera_SensorConf.PreviewWidth;
   dcmipp_conf.output_height = Camera_SensorConf.PreviewHeight;
-  dcmipp_conf.output_format = DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1;
-  dcmipp_conf.output_bpp = BPP_RGB888;
+  dcmipp_conf.output_format = DCMIPP_PIXEL_PACKER_FORMAT_YUV422_1;
+  dcmipp_conf.output_bpp = BPP_YUV422;
   dcmipp_conf.enable_swap = 0;
   dcmipp_conf.enable_gamma_conversion = -1; /* Let the ISP config file to decide */
-  dcmipp_conf.mode = CMW_Aspect_ratio_fullscreen;
+  dcmipp_conf.mode = CMW_Aspect_ratio_fit;
 
   if (CMW_CAMERA_SetPipeConfig(DCMIPP_PIPE1, &dcmipp_conf, &DisplayFramePitch) != 0)
   {
@@ -344,7 +474,7 @@ static void DCMIPP_Pipe2Config_DumpLiveStreaming(void)
   dcmipp_conf.output_bpp = BPP_RGB888;
   dcmipp_conf.enable_swap = 0;
   dcmipp_conf.enable_gamma_conversion = -1; /* Let the ISP config file to decide */
-  dcmipp_conf.mode = CMW_Aspect_ratio_fullscreen;
+  dcmipp_conf.mode = CMW_Aspect_ratio_fit;
 
   if (CMW_CAMERA_SetPipeConfig(DCMIPP_PIPE2, &dcmipp_conf, &pitch) != 0)
   {
@@ -368,7 +498,7 @@ static void DCMIPP_Pipe2Config_DumpIspRGB888(void)
   dcmipp_conf.output_bpp = BPP_RGB888;
   dcmipp_conf.enable_swap = 0;
   dcmipp_conf.enable_gamma_conversion = -1; /* Let the ISP config file to decide */
-  dcmipp_conf.mode = CMW_Aspect_ratio_fullscreen;
+  dcmipp_conf.mode = CMW_Aspect_ratio_fit;
 
   if (CMW_CAMERA_SetPipeConfig(DCMIPP_PIPE2, &dcmipp_conf, &pitch) != 0)
   {
@@ -430,6 +560,16 @@ static void ComputePreviewSize(uint32_t cameraWidth, uint32_t cameraHeight, uint
       *previewHeight = (uint32_t)(MAX_PREVIEW_BUFFER_WIDTH / aspectRatio);
     }
   }
+
+  /* Ensure previewWidth is a multiple of 8, rounded down and not greater than previous value */
+  *previewWidth &= (uint32_t)~7u;
+
+  /* Adjust previewHeight to keep aspect ratio after width rounding */
+  *previewHeight = (uint32_t)((float)(*previewWidth) / aspectRatio);
+
+  /* Ensure previewHeight is even */
+  if (*previewHeight & 1)
+    *previewHeight -= 1;
 }
 
 /**
@@ -448,10 +588,8 @@ int Camera_Config(DCMIPP_HandleTypeDef **hDcmipp, uint32_t Instance)
   initConf.height = 0; /* width and height not specified => camera full resolution is set */
   initConf.fps = 30;
   initConf.mirror_flip = CMW_MIRRORFLIP_NONE; /* CMW_MIRRORFLIP_NONE or CMW_MIRRORFLIP_FLIP or CMW_MIRRORFLIP_MIRROR or CMW_MIRRORFLIP_FLIP_MIRROR */
-  initConf.pixel_format = 0; /* Not yet implemented */
-  initConf.anti_flicker = 0; /* Not yet implemented */
 
-  ret = CMW_CAMERA_Init(&initConf);
+  ret = CMW_CAMERA_Init(&initConf, NULL);
   if (ret != CMW_ERROR_NONE)
   {
     printf("ERROR: Failed to Initialize camera\r\n");
@@ -516,6 +654,17 @@ int Camera_Config(DCMIPP_HandleTypeDef **hDcmipp, uint32_t Instance)
 #endif  /* ISP_MW_TUNING_TOOL_SUPPORT */
 
   return 0;
+}
+
+/**
+  * @brief  Error callback on the pipe. Occurs when overrun occurs on the pipe.
+  * @param  Pipe  Pipe receiving the callback
+  * @retval None
+  */
+void CMW_CAMERA_PIPE_ErrorCallback(uint32_t pipe)
+{
+  UNUSED(pipe);
+  printf("WARNING: Overrun detected\r\n");
 }
 
 /**
@@ -639,7 +788,7 @@ static void Display_Logo(void)
 
   Draw_ARGB8888_Logo((uint32_t) Overlay_Buffer, display_area, LogoArea);
 
-  if (HAL_LTDC_ReloadLayer(&hlcd_ltdc, LTDC_LAYER_2, LTDC_RELOAD_VERTICAL_BLANKING) != HAL_OK)
+  if (HAL_LTDC_ReloadLayer(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING, LTDC_LAYER_2) != HAL_OK)
   {
     printf("ERROR: Failed to display the logo area on the preview\r\n");
   }
@@ -722,7 +871,7 @@ static void Display_StatArea(void)
 
   Draw_ARGB8888_StatArea((uint32_t) Overlay_Buffer, display_area, ScaledStatArea);
 
-  if (HAL_LTDC_ReloadLayer(&hlcd_ltdc, LTDC_LAYER_2, LTDC_RELOAD_VERTICAL_BLANKING) != HAL_OK)
+  if (HAL_LTDC_ReloadLayer(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING, LTDC_LAYER_2) != HAL_OK)
   {
     printf("ERROR: Failed to display the statistic area on the preview\r\n");
   }
@@ -732,7 +881,7 @@ static void Display_StatArea(void)
   * @brief  Check if the ISP Statistic Area need to be updated
   * @retval Operation result
   */
-ISP_StatusTypeDef Check_StatAreaUpdate()
+ISP_StatusTypeDef Check_StatAreaUpdate(void)
 {
   ISP_StatusTypeDef ret;
   ISP_StatAreaTypeDef area;
@@ -914,7 +1063,7 @@ ISP_StatusTypeDef Camera_DumpFrame(void *pDcmipp, uint32_t Pipe, ISP_DumpCfgType
 
     /* Restore IPPlug Fifo size for each pipe */
     if (SetIPPlugConf(Camera_SensorConf.CamImgWidth, Camera_SensorConf.BytePerPixel,
-                      Camera_SensorConf.PreviewWidth, BPP_RGB888,
+                      Camera_SensorConf.PreviewWidth, BPP_YUV422,
                       Camera_SensorConf.CamImgWidth, BPP_RGB888) != ISP_OK)
     {
       return ISP_ERR_DCMIPP_CONFIGPIPE;
@@ -971,7 +1120,7 @@ ISP_StatusTypeDef Camera_DumpFrame(void *pDcmipp, uint32_t Pipe, ISP_DumpCfgType
 
     /* Restore IPPlug Fifo size for each pipe */
     if (SetIPPlugConf(Camera_SensorConf.CamImgWidth, Camera_SensorConf.BytePerPixel,
-                      Camera_SensorConf.PreviewWidth, BPP_RGB888,
+                      Camera_SensorConf.PreviewWidth, BPP_YUV422,
                       Camera_SensorConf.CamImgWidth, BPP_RGB888) != ISP_OK)
     {
       return ISP_ERR_DCMIPP_CONFIGPIPE;
@@ -1033,9 +1182,8 @@ ISP_StatusTypeDef SetIPPlugConf(uint32_t Pipe0_OW, uint32_t Pipe0_PFS,
   * @param  none
   * @retval none
   */
-void Display_Config()
+void Display_Config(void)
 {
-  MX_LTDC_LayerConfig_t config = {0};
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
   /* Preview area at the right of the display area */
   Rectangle_TypeDef PreviewArea = {
@@ -1054,88 +1202,79 @@ void Display_Config()
   };
 #endif /* ISP_MW_TUNING_TOOL_SUPPORT */
 
+  /* Initialized LTDC */
   BSP_LCD_Init(0, LCD_ORIENTATION_LANDSCAPE);
 
-  /* Preview layer Init */
-  config.X0          = PreviewArea.X0;
-  config.X1          = PreviewArea.X0 + PreviewArea.XSize;
-  config.Y0          = PreviewArea.Y0;
-  config.Y1          = PreviewArea.Y0 + PreviewArea.YSize;
-  config.PixelFormat = LTDC_PIXEL_FORMAT_RGB888;
-  config.Address     = (uint32_t) Main_DestBuffer;
+  /* Set configuration of the LTDC Layer 1 */
+  /* Initialize the buffer (black color) */
+  uint32_t pixel_count = Camera_SensorConf.PreviewWidth * Camera_SensorConf.PreviewHeight;
+  uint32_t buffer_size = pixel_count * BPP_YUV422;
+  for (uint32_t i = 0; i < pixel_count; ++i)
+  {
+      ((uint16_t *)Main_DestBuffer)[i] = 0x8010u;
+  }
+  SCB_CleanInvalidateDCache_by_Addr (Main_DestBuffer, (int32_t)buffer_size);
 
-  /* Initialize the buffer (grey color) */
-  uint32_t buffer_size = Camera_SensorConf.PreviewWidth * Camera_SensorConf.PreviewHeight * BPP_RGB888;
-  memset(Main_DestBuffer, 0x88, buffer_size);
-  SCB_CleanDCache_by_Addr (Main_DestBuffer, (int32_t)buffer_size);
+  /* Configure the YUV422 preview layer */
+  LTDC_LayerFlexYUVCoPlanarTypeDef pLayerFlexYUVCoP = {0};
+  pLayerFlexYUVCoP.Layer.WindowX0 = PreviewArea.X0;
+  pLayerFlexYUVCoP.Layer.WindowX1 = PreviewArea.X0 + PreviewArea.XSize;
+  pLayerFlexYUVCoP.Layer.WindowY0 = PreviewArea.Y0;
+  pLayerFlexYUVCoP.Layer.WindowY1 = PreviewArea.Y0 + PreviewArea.YSize;
+  pLayerFlexYUVCoP.Layer.Alpha = LTDC_LxCACR_CONSTA;
+  pLayerFlexYUVCoP.Layer.Alpha0 = 0;
+  pLayerFlexYUVCoP.Layer.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
+  pLayerFlexYUVCoP.Layer.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
+  pLayerFlexYUVCoP.Layer.ImageWidth = PreviewArea.XSize;
+  pLayerFlexYUVCoP.Layer.ImageHeight = PreviewArea.YSize;
+  pLayerFlexYUVCoP.Layer.Backcolor.Blue = 0;
+  pLayerFlexYUVCoP.Layer.Backcolor.Green = 0;
+  pLayerFlexYUVCoP.Layer.Backcolor.Red = 0;
+  pLayerFlexYUVCoP.FlexYUV.YUVOrder = LTDC_YUV_ORDER_LUMINANCE_FIRST;
+  pLayerFlexYUVCoP.FlexYUV.LuminanceOrder = LTDC_YUV_LUMINANCE_ORDER_EVEN_FIRST;
+  pLayerFlexYUVCoP.FlexYUV.ChrominanceOrder = LTDC_YUV_CHROMIANCE_ORDER_U_FIRST;
+  pLayerFlexYUVCoP.FlexYUV.LuminanceRescale = LTDC_YUV_LUMINANCE_RESCALE_DISABLE;
+  pLayerFlexYUVCoP.YUVAddress = (uint32_t) Main_DestBuffer;
+  pLayerFlexYUVCoP.ColorConverter = LTDC_YUV2RGBCONVERTOR_BT709_FULL_RANGE;
 
-  BSP_LCD_ConfigLayer(0, LTDC_LAYER_1, &config);
+  HAL_LTDC_ConfigLayerFlexYUVCoPlanar(&hlcd_ltdc, &pLayerFlexYUVCoP, LTDC_LAYER_1);
+
+  /* Set pitch to match with the sensor frame pitch */
+  /* The LTDC HAL pitch API works with "number of pixel", not "number of bytes".
+   * Hack : temporary set the pixel format to "1 byte per pixel", then configure the pitch
+   * (unit = pixel = byte) and then restore the pixel format */
+  uint32_t fmt = hlcd_ltdc.LayerCfg[LTDC_LAYER_1].PixelFormat;
+  hlcd_ltdc.LayerCfg[LTDC_LAYER_1].PixelFormat = LTDC_PIXEL_FORMAT_L8;
+  HAL_LTDC_SetPitch(&hlcd_ltdc, DisplayFramePitch, LTDC_LAYER_1);
+  hlcd_ltdc.LayerCfg[LTDC_LAYER_1].PixelFormat = fmt;
 
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
-  /* Overlay layer Init */
-  config.X0          = display_area.X0;
-  config.X1          = display_area.X0 + display_area.XSize;
-  config.Y0          = display_area.Y0;
-  config.Y1          = display_area.Y0 + display_area.YSize;
-  config.PixelFormat = LTDC_PIXEL_FORMAT_ARGB8888;
-  config.Address     = (uint32_t) Overlay_Buffer;
-
+  /* Set configuration of the LTDC Layer 2 */
   /* Initialize the buffer */
   memset(Overlay_Buffer, 0x00, display_area.XSize * display_area.YSize * BPP_ARGB8888);
 
-  BSP_LCD_ConfigLayer(0, LTDC_LAYER_2, &config);
-
-  Display_Logo();
-  Display_StatArea();
-#endif  /* ISP_MW_TUNING_TOOL_SUPPORT */
-}
-
-/**
-  * @brief  MX LTDC layer configuration.
-  * @param  hltdc      LTDC handle
-  * @param  LayerIndex Layer 0 or 1
-  * @param  Config     Layer configuration
-  * @note   Owerwrite weak function from lcd BSP
-  * @retval HAL status
-  */
-HAL_StatusTypeDef MX_LTDC_ConfigLayer(LTDC_HandleTypeDef *hltdc, uint32_t LayerIndex, MX_LTDC_LayerConfig_t *Config)
-{
-  HAL_StatusTypeDef ret;
   LTDC_LayerCfgTypeDef pLayerCfg ={0};
-
-  pLayerCfg.WindowX0 = Config->X0;
-  pLayerCfg.WindowX1 = Config->X1;
-  pLayerCfg.WindowY0 = Config->Y0;
-  pLayerCfg.WindowY1 = Config->Y1;
-  pLayerCfg.PixelFormat = Config->PixelFormat;
+  pLayerCfg.WindowX0 = display_area.X0;
+  pLayerCfg.WindowX1 = display_area.X0 + display_area.XSize;
+  pLayerCfg.WindowY0 = display_area.Y0;
+  pLayerCfg.WindowY1 = display_area.Y0 + display_area.YSize;
+  pLayerCfg.PixelFormat = LTDC_PIXEL_FORMAT_ARGB8888;
   pLayerCfg.Alpha = LTDC_LxCACR_CONSTA;
   pLayerCfg.Alpha0 = 0;
   pLayerCfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
   pLayerCfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
-  pLayerCfg.FBStartAdress = Config->Address;
-  pLayerCfg.ImageWidth = (Config->X1 - Config->X0);
-  pLayerCfg.ImageHeight = (Config->Y1 - Config->Y0);
+  pLayerCfg.FBStartAdress = (uint32_t) Overlay_Buffer;
+  pLayerCfg.ImageWidth = display_area.XSize;
+  pLayerCfg.ImageHeight = display_area.YSize;
   pLayerCfg.Backcolor.Blue = 0;
   pLayerCfg.Backcolor.Green = 0;
   pLayerCfg.Backcolor.Red = 0;
 
-  ret = HAL_LTDC_ConfigLayer(hltdc, &pLayerCfg, LayerIndex);
+  HAL_LTDC_ConfigLayer(&hlcd_ltdc, &pLayerCfg, LTDC_LAYER_2);
 
-  /* Set pitch to match with the sensor frame pitch */
-  if ((LayerIndex == LTDC_LAYER_1) && (DisplayFramePitch != 0))
-  {
-    /* The LTDC HAL pitch API works with "number of pixel", not "number of bytes".
-     * Hack : temporary set the pixel format to "1 byte per pixel", then configure the pitch
-     * (unit = pixel = byte) and then restore the pixel format */
-    uint32_t fmt;
-
-    fmt = hltdc->LayerCfg[LayerIndex].PixelFormat;
-    hltdc->LayerCfg[LayerIndex].PixelFormat = LTDC_PIXEL_FORMAT_L8;
-    HAL_LTDC_SetPitch(hltdc, DisplayFramePitch, LayerIndex);
-    hltdc->LayerCfg[LayerIndex].PixelFormat = fmt;
-  }
-
-  return ret;
+  Display_Logo();
+  Display_StatArea();
+#endif  /* ISP_MW_TUNING_TOOL_SUPPORT */
 }
 
 static void SystemClock_Config(void)
@@ -1251,7 +1390,7 @@ static void SystemClock_Config(void)
   }
 }
 
-static void Security_Config()
+static void Security_Config(void)
 {
   __HAL_RCC_RIFSC_CLK_ENABLE();
   RIMC_MasterConfig_t RIMC_master = {0};
@@ -1261,12 +1400,15 @@ static void Security_Config()
   HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DCMIPP, &RIMC_master);
   HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1 , &RIMC_master);
   HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC2 , &RIMC_master);
+  HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_OTG1 , &RIMC_master);
+
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DMA2D , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_CSI    , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DCMIPP , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDC   , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDCL1 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDCL2 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_OTG1HS , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
 }
 
 static void IAC_Config(void)

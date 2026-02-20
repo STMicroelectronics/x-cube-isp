@@ -27,6 +27,7 @@
 #include "cmw_errno.h"
 #include "imx335.h"
 #include "isp_api.h"
+#include "cmw_camera.h"
 
 typedef struct
 {
@@ -48,6 +49,7 @@ typedef struct
 } CMW_IMX335_t;
 
 int CMW_IMX335_Probe(CMW_IMX335_t *io_ctx, CMW_Sensor_if_t *vd55g1_if);
+void CMW_IMX335_SetDefaultSensorValues(CMW_IMX335_config_t *imx335_config);
 
 #ifdef __cplusplus
 }

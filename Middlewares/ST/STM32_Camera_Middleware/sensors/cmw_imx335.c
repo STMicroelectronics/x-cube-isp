@@ -183,6 +183,7 @@ static int32_t CMW_IMX335_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
   info->height = IMX335_HEIGHT;
   info->gain_min = IMX335_GAIN_MIN;
   info->gain_max = IMX335_GAIN_MAX;
+  info->again_max = IMX335_AGAIN_MAX;
   info->exposure_min = IMX335_EXPOSURE_MIN;
   info->exposure_max = IMX335_EXPOSURE_MAX;
 
@@ -198,6 +199,12 @@ static int32_t CMW_IMX335_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
 {
   int ret = CMW_ERROR_NONE;
   uint32_t resolution;
+  CMW_IMX335_config_t *sensor_config;
+  sensor_config = (CMW_IMX335_config_t*)(initSensor->sensor_config);
+  if (sensor_config == NULL)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
 
   ret = CMW_IMX335_GetResType(initSensor->width, initSensor->height, &resolution);
   if (ret)
@@ -211,13 +218,19 @@ static int32_t CMW_IMX335_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
     return CMW_ERROR_WRONG_PARAM;
   }
 
-  ret = IMX335_Init(&((CMW_IMX335_t *)io_ctx)->ctx_driver, resolution, initSensor->pixel_format);
+  ret = IMX335_Init(&((CMW_IMX335_t *)io_ctx)->ctx_driver, resolution, sensor_config->pixel_format);
   if (ret != IMX335_OK)
   {
     return CMW_ERROR_COMPONENT_FAILURE;
   }
 
   return CMW_ERROR_NONE;
+}
+
+void CMW_IMX335_SetDefaultSensorValues(CMW_IMX335_config_t *imx335_config)
+{
+  assert(imx335_config != NULL);
+  imx335_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
 }
 
 static int32_t CMW_IMX335_Start(void *io_ctx)
@@ -258,14 +271,36 @@ static int32_t CMW_IMX335_Run(void *io_ctx)
 
 static void CMW_IMX335_PowerOn(CMW_IMX335_t *io_ctx)
 {
-  io_ctx->ShutdownPin(0);  /* Disable MB1723 2V8 signal  */
-  io_ctx->Delay(100);
-  io_ctx->EnablePin(0);  /* RESET low (reset active low) */
-  io_ctx->Delay(100);
-  io_ctx->ShutdownPin(1);  /* Disable MB1723 2V8 signal  */
-  io_ctx->Delay(100);
-  io_ctx->EnablePin(1);  /* RESET low (reset active low) */
-  io_ctx->Delay(100);
+  /* Note: According to the IMX335 datasheet (E18112A84), the power-on sequence
+   * should be as followed:
+   * 1. Turn On the power supplies so that the power supplies rise in order of
+   *    1.2V power supply (DVDD),
+   *    1.8V power supply (OVDD),
+   *    2.9V power supply (AVDD)
+   *   with a rise time of 0 to 200ms.
+   *   In addition, all power supplies should finish rising within 200ms.
+   * 2. The register values are undefined immediately after power-on, so the
+   *    system must be cleared. Hold XCLR at Low level for 500 ns or more after
+   *    all the power supplies have finished rising. (The register values after
+   *    a system clear are the default values.)
+   * 3. The system clear is applied by setting XCLR to High level. The master
+   *    clock input after setting the XCLR pin to High level.
+   * 4. Make the sensor setting by register communication after the system
+   *    clear.
+   *
+   * By default, on the MB1939 STM32N6-DK board, OVDD (1.8V) and AVDD (2.8V) are
+   * always on when PWR_ON is high (VDD3V3 and VCORE ON). Power-on order cannot
+   * be followed.
+   *
+   * MB1938 N6-DK and MB1854 IMX335 board IO mapping:
+   *  ShutdownPin PC8 (CN14-17) -- (CN1-17) NRST_CAM  -- 1V8 (CN2-10) RESET (XCLR?)
+   *  EnablePin   PD2 (CN14-18) -- (CN1-18) EN_MODULE -- 1V2 enable (CN2-6) DVDD
+   */
+  io_ctx->EnablePin(1);   /* Enable MB1854 1V2: DVDD and 24MHz CAM_CLK*/
+  io_ctx->ShutdownPin(0); /* Set RESET low */
+  io_ctx->Delay(1);       /* Hold RESET low for at least 500 ns after power supply have finished rising */
+  io_ctx->ShutdownPin(1); /* Release RESET */
+  io_ctx->Delay(1);      /* Wait for sensor to be ready */
 }
 
 static void CMW_IMX335_VsyncEventCallback(void *io_ctx, uint32_t pipe)

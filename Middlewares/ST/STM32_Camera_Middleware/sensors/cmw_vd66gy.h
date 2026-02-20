@@ -28,6 +28,7 @@
 #include "vd6g.h"
 #include "stm32n6xx_hal_dcmipp.h"
 #include "isp_api.h"
+#include "cmw_camera.h"
 
 #define VD66GY_CHIP_ID 0x5603
 #define VD66GY_NAME    "VD66GY"
@@ -35,7 +36,6 @@
 typedef struct
 {
   uint16_t Address;
-  uint32_t ClockInHz;
   VD6G_Ctx_t ctx_driver;
   ISP_HandleTypeDef hIsp;
   ISP_AppliHelpersTypeDef appliHelpers;
@@ -52,6 +52,7 @@ typedef struct
 } CMW_VD66GY_t;
 
 int CMW_VD66GY_Probe(CMW_VD66GY_t *io_ctx, CMW_Sensor_if_t *vd6g_if);
+void CMW_VD66GY_SetDefaultSensorValues(CMW_VD66GY_config_t *vd66gy_config);
 
 #ifdef __cplusplus
 }

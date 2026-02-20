@@ -46,9 +46,11 @@ _Min_Stack_Size = 0x1000; /* required amount of stack */
 /* Dump buffer and overlay (32MB) -> PSRAM */
 MEMORY
 {
-  AXISRAM1_S (xrw) : ORIGIN = 0x34000000, LENGTH =   1M
-  AXISRAM2_S (xrw) : ORIGIN = 0x34180400, LENGTH = 511K
-  PSRAM (xrw)      : ORIGIN = 0x90000000, LENGTH =  32M
+  AXISRAM1_S1 (xrw)       : ORIGIN = 0x34000000, LENGTH = 620K
+  AXISRAM1_S2 (xrw)       : ORIGIN = 0x3409B000, LENGTH =  84K
+  AXISRAM1_UNCACHED (xrw) : ORIGIN = 0x340B0000, LENGTH = 320K
+  AXISRAM2_S  (xrw)       : ORIGIN = 0x34180400, LENGTH = 511K
+  PSRAM (xrw)             : ORIGIN = 0x90000000, LENGTH =  32M
 }
 
 /* Sections */
@@ -172,6 +174,17 @@ SECTIONS
     __bss_end__ = _ebss;
   } >AXISRAM2_S
 
+  /* Uncached AXI SRAM */
+  .uncached_bss (NOLOAD) :
+  {
+    __uncached_bss_start__ = .;
+    . = ALIGN(4);
+    *(.uncached_bss)
+    *(.uncached_bss*)
+    . = ALIGN(4);
+    __uncached_bss_end__ = .;
+  } >AXISRAM1_UNCACHED
+
   /* User_heap_stack section, used to check that there is enough "RAM" Ram  type memory left */
   ._user_heap_stack :
   {
@@ -181,7 +194,7 @@ SECTIONS
     . = . + _Min_Heap_Size;
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
-  } >AXISRAM2_S
+  } >AXISRAM1_S2
 
   /* Camera frame buffer in another part of RAM */
   .buffRam (NOLOAD):
@@ -189,7 +202,7 @@ SECTIONS
     . = ALIGN(4);
     *(.buffRam)
     . = ALIGN(4);
-  } >AXISRAM1_S
+  } >AXISRAM1_S1
 
   .psram_section (NOLOAD):
   {

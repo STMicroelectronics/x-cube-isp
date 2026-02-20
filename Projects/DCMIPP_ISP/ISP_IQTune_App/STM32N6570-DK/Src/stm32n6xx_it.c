@@ -28,7 +28,7 @@
 /* Private variables ---------------------------------------------------------*/
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 extern LTDC_HandleTypeDef   hlcd_ltdc;
-extern PCD_HandleTypeDef    hpcd_CDC;
+extern PCD_HandleTypeDef    usbx_pcd_handle;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -111,15 +111,6 @@ void SecureFault_Handler(void)
 }
 
 /**
-  * @brief  This function handles SVCall exception.
-  * @param  None
-  * @retval None
-  */
-void SVC_Handler(void)
-{
-}
-
-/**
   * @brief  This function handles Debug Monitor exception.
   * @param  None
   * @retval None
@@ -129,28 +120,6 @@ void DebugMon_Handler(void)
   while (1)
   {
   }
-}
-
-/**
-  * @brief  This function handles PendSVC exception.
-  * @param  None
-  * @retval None
-  */
-void PendSV_Handler(void)
-{
-  while (1)
-  {
-  }
-}
-
-/**
-  * @brief  This function handles SysTick Handler.
-  * @param  None
-  * @retval None
-  */
-void SysTick_Handler(void)
-{
-  HAL_IncTick();
 }
 
 /******************************************************************************/
@@ -198,6 +167,6 @@ void LTDC_LO_IRQHandler(void)
   */
 void USB1_OTG_HS_IRQHandler(void)
 {
-  HAL_PCD_IRQHandler(&hpcd_CDC);
+  HAL_PCD_IRQHandler(&usbx_pcd_handle);
 }
 #endif

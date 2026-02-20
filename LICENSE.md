@@ -13,5 +13,5 @@
 | Camera driver VD6G           | STMicroelectronics                    | [BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause)
 | STM32 Camera Middleware      | STMicroelectronics                    | [SLA0044](https://www.st.com/SLA0044)
 | STM32 USB Device Library     | STMicroelectronics                    | [SLA0044](https://www.st.com/SLA0044)
-| STM32 ISP Library            | STMicroelectronics, LACROIX - Impulse | [SLA0044](https://www.st.com/SLA0044)
+| STM32 ISP Library            | STMicroelectronics                    | [SLA0044](https://www.st.com/SLA0044)
 | ISP IQTune application       | STMicroelectronics                    | [SLA0044](https://www.st.com/SLA0044)

@@ -63,6 +63,8 @@ typedef struct {
   ISP_SVC_StatType upRequest;           /* Type of statistics request at Up location */
   ISP_SVC_StatType downRequest;         /* Type of statistics request at Down location */
   uint32_t requestAllCounter;           /* Counter for the temporary "request all stats" mode */
+  ISP_StatAreaTypeDef upStatArea;       /* Stat area configured at upRequest */
+  ISP_StatAreaTypeDef downStatArea;     /* Stat area configured at downRequest */
 } ISP_SVC_StatEngineTypeDef;
 
 /* Private constants ---------------------------------------------------------*/
@@ -86,6 +88,7 @@ static ISP_DecimationTypeDef ISP_DecimationValue = {ISP_DECIM_FACTOR_1};
 static ISP_IQParamTypeDef ISP_IQParamCache;
 static ISP_SVC_StatEngineTypeDef ISP_SVC_StatEngine;
 static bool ISP_SensorDelayMeasureRun;
+static ISP_RestartStateTypeDef *pISP_RestartState;
 
 static const uint32_t avgRGBUp[] = {
     DCMIPP_STAT_EXT_SOURCE_PRE_BLKLVL_R, DCMIPP_STAT_EXT_SOURCE_PRE_BLKLVL_G, DCMIPP_STAT_EXT_SOURCE_PRE_BLKLVL_B
@@ -192,12 +195,12 @@ static int32_t From_CConv_Reg(int16_t Reg)
   return (int32_t) Val;
 }
 
-static uint8_t GetAvgStats(ISP_HandleTypeDef *hIsp, ISP_SVC_StatLocation location, ISP_SVC_Component component, uint32_t accu)
+static uint8_t GetAvgStats(ISP_StatAreaTypeDef *pStatArea, ISP_SVC_StatLocation location, ISP_SVC_Component component, uint32_t accu)
 {
   uint32_t nb_comp_pix, comp_divider;
 
   /* Number of pixels computed from Stat Area and considering decimation */
-  nb_comp_pix = hIsp->statArea.XSize * hIsp->statArea.YSize;
+  nb_comp_pix = pStatArea->XSize * pStatArea->YSize;
   nb_comp_pix /= ISP_DecimationValue.factor * ISP_DecimationValue.factor;
 
   if (location == ISP_STAT_LOC_DOWN)
@@ -267,7 +270,7 @@ static ISP_SVC_StatEngineStage GetNextStatStage(ISP_SVC_StatEngineStage current)
       next = ISP_STAT_CFG_UP_BINS_0_2;
     }
     /* Skip Up Bins : try Down Avg */
-    else if (ISP_SVC_StatEngine.downRequest &  ISP_STAT_TYPE_AVG)
+    else if (ISP_SVC_StatEngine.downRequest & ISP_STAT_TYPE_AVG)
     {
       next = ISP_STAT_CFG_DOWN_AVG;
     }
@@ -352,6 +355,16 @@ static ISP_SVC_StatEngineStage GetNextStatStage(ISP_SVC_StatEngineStage current)
     }
     break;
 
+  case ISP_STAT_CFG_CYCLE_SIZE:
+    /* Shall not happen, just add this case to silence a Wswitch-enum warning */
+    break;
+
+  case ISP_STAT_CFG_UP_BINS_0_2:
+  case ISP_STAT_CFG_UP_BINS_3_5:
+  case ISP_STAT_CFG_UP_BINS_6_8:
+  case ISP_STAT_CFG_DOWN_BINS_0_2:
+  case ISP_STAT_CFG_DOWN_BINS_3_5:
+  case ISP_STAT_CFG_DOWN_BINS_6_8:
   default:
     /* In the middle of the bins measurement: continue with the next bins part */
     next = (ISP_SVC_StatEngineStage) (current + 1);
@@ -485,6 +498,9 @@ ISP_StatusTypeDef ISP_SVC_ISP_SetDemosaicing(ISP_HandleTypeDef *hIsp, ISP_Demosa
         break;
       case ISP_DEMOS_TYPE_BGGR:
         rawBayerCfg.RawBayerType = DCMIPP_RAWBAYER_BGGR;
+        break;
+      case ISP_DEMOS_TYPE_MONO:
+        /* Shall not happen, just add this case to silence a Wswitch-enum warning */
         break;
       default:
         rawBayerCfg.RawBayerType = DCMIPP_RAWBAYER_RGGB;
@@ -638,11 +654,11 @@ ISP_StatusTypeDef ISP_SVC_ISP_SetContrast(ISP_HandleTypeDef *hIsp, ISP_ContrastT
   DCMIPP_ContrastConfTypeDef contrast;
 
   if ((hIsp == NULL) || (pConfig == NULL) ||
-      (pConfig->coeff.LUM_0 > ISP_CONTAST_LUMCOEFF_MAX) ||  (pConfig->coeff.LUM_32 > ISP_CONTAST_LUMCOEFF_MAX) ||
-      (pConfig->coeff.LUM_64 > ISP_CONTAST_LUMCOEFF_MAX) || (pConfig->coeff.LUM_96 > ISP_CONTAST_LUMCOEFF_MAX) ||
-      (pConfig->coeff.LUM_128 > ISP_CONTAST_LUMCOEFF_MAX) || (pConfig->coeff.LUM_160 > ISP_CONTAST_LUMCOEFF_MAX) ||
-      (pConfig->coeff.LUM_192 > ISP_CONTAST_LUMCOEFF_MAX) || (pConfig->coeff.LUM_224 > ISP_CONTAST_LUMCOEFF_MAX) ||
-      (pConfig->coeff.LUM_256 > ISP_CONTAST_LUMCOEFF_MAX))
+      (pConfig->coeff.LUM_0 > ISP_CONTRAST_LUMCOEFF_MAX) || (pConfig->coeff.LUM_32 > ISP_CONTRAST_LUMCOEFF_MAX) ||
+      (pConfig->coeff.LUM_64 > ISP_CONTRAST_LUMCOEFF_MAX) || (pConfig->coeff.LUM_96 > ISP_CONTRAST_LUMCOEFF_MAX) ||
+      (pConfig->coeff.LUM_128 > ISP_CONTRAST_LUMCOEFF_MAX) || (pConfig->coeff.LUM_160 > ISP_CONTRAST_LUMCOEFF_MAX) ||
+      (pConfig->coeff.LUM_192 > ISP_CONTRAST_LUMCOEFF_MAX) || (pConfig->coeff.LUM_224 > ISP_CONTRAST_LUMCOEFF_MAX) ||
+      (pConfig->coeff.LUM_256 > ISP_CONTRAST_LUMCOEFF_MAX))
   {
     return ISP_ERR_CONTRAST_EINVAL;
   }
@@ -1297,7 +1313,7 @@ ISP_StatusTypeDef ISP_SVC_Misc_GetFirmwareConfig(ISP_FirmwareConfigTypeDef *pCon
   uint32_t devId;
 
   /* Number of supported fields (RGBOrder, HasStatRemoval, etc..). */
-  pConfig->nbField = 8;
+  pConfig->nbField = 10;
   /* RGB Order is BGR (1) on STM32N6 and more generally on any MCU using DCMIPP HAL */
   pConfig->rgbOrder = ISP_SVC_CONFIG_ORDER_BGR;
   /* StatRemoval, GammaCorrection and AEC antiflickering support status */
@@ -1305,7 +1321,7 @@ ISP_StatusTypeDef ISP_SVC_Misc_GetFirmwareConfig(ISP_FirmwareConfigTypeDef *pCon
   pConfig->hasGamma = 0;
   pConfig->hasUniqueGamma = 1;
   pConfig->hasAntiFlicker = 1;
-  /* DevideId */
+  /* DeviceId */
   switch(HAL_GetDEVID())
   {
   case 0x00006200: /* STM32N645xx */
@@ -1319,11 +1335,19 @@ ISP_StatusTypeDef ISP_SVC_Misc_GetFirmwareConfig(ISP_FirmwareConfigTypeDef *pCon
   }
   pConfig->deviceId = devId;
   /* UID */
-  pConfig->uId[0] = HAL_GetUIDw0();
+  pConfig->uId[0] = HAL_GetUIDw2();
   pConfig->uId[1] = HAL_GetUIDw1();
-  pConfig->uId[2] = HAL_GetUIDw2();
+  pConfig->uId[2] = HAL_GetUIDw0();
   /* Sensor Delay support status */
   pConfig->hasSensorDelay = 1;
+  /* UVC streaming support */
+#ifdef ISP_ENABLE_UVC
+  pConfig->hasUVC = 1;
+#else
+  pConfig->hasUVC = 0;
+#endif
+  /* ST 2A algorithms support */
+  pConfig->hasSTAlgo = 1;
   return ISP_OK;
 }
 
@@ -1470,6 +1494,8 @@ ISP_StatusTypeDef ISP_SVC_Misc_SendSensorDelayMeasure(ISP_HandleTypeDef *hIsp, I
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
   return ISP_CmdParser_SendSensorDelayMeasure(hIsp, pSensorDelay);
 #else
+  (void)hIsp; /* unused */
+  (void)pSensorDelay; /* unused */
   return ISP_OK;
 #endif
 }
@@ -1523,28 +1549,28 @@ ISP_StatusTypeDef ISP_SVC_Misc_StartPreview(ISP_HandleTypeDef *hIsp)
   *         Check if the gamma block is enabled
   * @param  hIsp: ISP device handle
   * @param  Pipe: DCMIPP pipe line
-  * @retval 1 if enabled 0 otherwise
+  * @retval true if enabled false otherwise
   */
 bool ISP_SVC_Misc_IsGammaEnabled(ISP_HandleTypeDef *hIsp, uint32_t Pipe)
 {
-  uint8_t ret;
+  bool ret;
 
   /* Check handle validity */
   if (hIsp == NULL)
   {
-    return ISP_ERR_EINVAL;
+    return false;
   }
 
   switch(Pipe)
   {
   case 1:
-    ret = (uint8_t) HAL_DCMIPP_PIPE_IsEnabledGammaConversion(hIsp->hDcmipp, DCMIPP_PIPE1);
+    ret = (bool) HAL_DCMIPP_PIPE_IsEnabledGammaConversion(hIsp->hDcmipp, DCMIPP_PIPE1);
     break;
   case 2:
-    ret = (uint8_t) HAL_DCMIPP_PIPE_IsEnabledGammaConversion(hIsp->hDcmipp, DCMIPP_PIPE2);
+    ret = (bool) HAL_DCMIPP_PIPE_IsEnabledGammaConversion(hIsp->hDcmipp, DCMIPP_PIPE2);
     break;
   default:
-    ret = 0; /*  No gamma on pipe 0 */
+    ret = false; /* No gamma on pipe 0 */
   }
 
   return ret;
@@ -1660,6 +1686,34 @@ ISP_IQParamTypeDef *ISP_SVC_IQParam_Get(ISP_HandleTypeDef *hIsp)
 }
 
 /**
+  * @brief  ISP_SVC_GetRestartState
+  *         Get the pointer to the ISP Restart State
+  * @param  hIsp: ISP device handle
+  * @retval Pointer to the ISP Restart State
+  */
+ISP_RestartStateTypeDef *ISP_SVC_GetRestartState(ISP_HandleTypeDef *hIsp)
+{
+  (void)hIsp; /* unused */
+
+  return pISP_RestartState;
+}
+
+/**
+  * @brief  ISP_SVC_SetRestartState
+  *         Set the pointer to the ISP Restart State
+  * @param  hIsp: ISP device handle
+  * @param  pRestartState: Pointer to the ISP Restart State
+  * @retval ISP status
+  */
+ISP_StatusTypeDef ISP_SVC_SetRestartState(ISP_HandleTypeDef *hIsp, ISP_RestartStateTypeDef *pRestartState)
+{
+  (void)hIsp; /* unused */
+
+  pISP_RestartState = pRestartState;
+  return ISP_OK;
+}
+
+/**
   * @brief  ISP_SVC_Stats_Init
   *         Initialize the statistic engine
   * @param  hIsp: ISP device handle
@@ -1712,9 +1766,9 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
     HAL_DCMIPP_PIPE_GetISPAccumulatedStatisticsCounter(hIsp->hDcmipp, DCMIPP_PIPE1, DCMIPP_STATEXT_MODULE2, &avgG);
     HAL_DCMIPP_PIPE_GetISPAccumulatedStatisticsCounter(hIsp->hDcmipp, DCMIPP_PIPE1, DCMIPP_STATEXT_MODULE3, &avgB);
 
-    ongoing->up.averageR = GetAvgStats(hIsp, ISP_STAT_LOC_UP, ISP_RED, avgR);
-    ongoing->up.averageG = GetAvgStats(hIsp, ISP_STAT_LOC_UP, ISP_GREEN, avgG);
-    ongoing->up.averageB = GetAvgStats(hIsp, ISP_STAT_LOC_UP, ISP_BLUE, avgB);
+    ongoing->up.averageR = GetAvgStats(&ISP_SVC_StatEngine.upStatArea, ISP_STAT_LOC_UP, ISP_RED, avgR);
+    ongoing->up.averageG = GetAvgStats(&ISP_SVC_StatEngine.upStatArea, ISP_STAT_LOC_UP, ISP_GREEN, avgG);
+    ongoing->up.averageB = GetAvgStats(&ISP_SVC_StatEngine.upStatArea, ISP_STAT_LOC_UP, ISP_BLUE, avgB);
     ongoing->up.averageL = LuminanceFromRGB(ongoing->up.averageR, ongoing->up.averageG, ongoing->up.averageB);
     break;
 
@@ -1739,9 +1793,9 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
     HAL_DCMIPP_PIPE_GetISPAccumulatedStatisticsCounter(hIsp->hDcmipp, DCMIPP_PIPE1, DCMIPP_STATEXT_MODULE2, &avgG);
     HAL_DCMIPP_PIPE_GetISPAccumulatedStatisticsCounter(hIsp->hDcmipp, DCMIPP_PIPE1, DCMIPP_STATEXT_MODULE3, &avgB);
 
-    ongoing->down.averageR = GetAvgStats(hIsp, ISP_STAT_LOC_DOWN, ISP_RED, avgR);
-    ongoing->down.averageG = GetAvgStats(hIsp, ISP_STAT_LOC_DOWN, ISP_GREEN, avgG);
-    ongoing->down.averageB = GetAvgStats(hIsp, ISP_STAT_LOC_DOWN, ISP_BLUE, avgB);
+    ongoing->down.averageR = GetAvgStats(&ISP_SVC_StatEngine.downStatArea, ISP_STAT_LOC_DOWN, ISP_RED, avgR);
+    ongoing->down.averageG = GetAvgStats(&ISP_SVC_StatEngine.downStatArea, ISP_STAT_LOC_DOWN, ISP_GREEN, avgG);
+    ongoing->down.averageB = GetAvgStats(&ISP_SVC_StatEngine.downStatArea, ISP_STAT_LOC_DOWN, ISP_BLUE, avgB);
     IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
     if ((hIsp->sensorInfo.bayer_pattern == ISP_DEMOS_TYPE_MONO) || (!IQParamConfig->demosaicing.enable))
     {
@@ -1751,8 +1805,8 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
     {
       ongoing->down.averageL = LuminanceFromRGB(ongoing->down.averageR, ongoing->down.averageG, ongoing->down.averageB);
     }
+    Meta.averageL = ongoing->down.averageL;
     break;
-
   case ISP_STAT_CFG_DOWN_BINS_0_2:
     ReadStatHistogram(hIsp, &ongoing->down.histogram[0]);
     break;
@@ -1769,6 +1823,10 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
     ReadStatHistogram(hIsp, &ongoing->down.histogram[9]);
     break;
 
+  case ISP_STAT_CFG_CYCLE_SIZE:
+    /* Shall not happen, just add this case to silence a Wswitch-enum warning */
+    break;
+
   default:
     /* No Read */
     break;
@@ -1783,6 +1841,12 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
       statConf[i].Mode = DCMIPP_STAT_EXT_MODE_AVERAGE;
       statConf[i].Source = avgRGBUp[i];
       statConf[i].Bins = DCMIPP_STAT_EXT_AVER_MODE_ALL_PIXELS;
+    }
+
+    if (ISP_SVC_ISP_GetStatArea(hIsp, &ISP_SVC_StatEngine.upStatArea) != ISP_OK)
+    {
+      printf("ERROR: can't get UP Stat Area\r\n");
+      return;
     }
     break;
 
@@ -1809,6 +1873,12 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
       statConf[i].Source = avgRGBDown[i];
       statConf[i].Bins = DCMIPP_STAT_EXT_AVER_MODE_ALL_PIXELS;
     }
+
+    if (ISP_SVC_ISP_GetStatArea(hIsp, &ISP_SVC_StatEngine.downStatArea) != ISP_OK)
+    {
+      printf("ERROR: can't get DOWN Stat Area\r\n");
+      return;
+    }
     break;
 
   case ISP_STAT_CFG_DOWN_BINS_0_2:
@@ -1825,6 +1895,10 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
 
   case ISP_STAT_CFG_DOWN_BINS_9_11:
     SetStatConfig(statConf, &statConfDownBins_9_11);
+    break;
+
+  case ISP_STAT_CFG_CYCLE_SIZE:
+    /* Shall not happen, just add this case to silencet a Wswitch-enum warning */
     break;
 
   default:
@@ -1850,6 +1924,16 @@ void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp)
 
   /* Cycle start / end */
   frameId = ISP_SVC_Misc_GetMainFrameId(hIsp);
+
+  if (hIsp->appliHelpers.GetExternalStatistics != NULL)
+  {
+    ISP_SVC_StatEngine.last.extFrameId = frameId;
+    if (hIsp->appliHelpers.GetExternalStatistics(hIsp->cameraInstance, &ISP_SVC_StatEngine.last.extStats) != ISP_OK)
+    {
+      ISP_SVC_StatEngine.last.extStats.nbAreas = 0;
+      ISP_SVC_StatEngine.last.extStats.stats = NULL;
+    }
+  }
 
   if (stagePrevious2 == GetStatCycleStart(ISP_STAT_LOC_UP))
   {
@@ -1925,7 +2009,8 @@ ISP_StatusTypeDef ISP_SVC_Stats_ProcessCallbacks(ISP_HandleTypeDef *hIsp)
     /* Check if stats are available for a client, comparing the location and the specified frameId */
     if (((client->location == ISP_STAT_LOC_DOWN) && (client->refFrameId <= pLastStat->downFrameIdStart)) ||
         ((client->location == ISP_STAT_LOC_UP) && (client->refFrameId <= pLastStat->upFrameIdStart)) ||
-        ((client->location == ISP_STAT_LOC_UP_AND_DOWN) && (client->refFrameId <= pLastStat->upFrameIdStart) && (client->refFrameId <= pLastStat->downFrameIdStart)))
+        ((client->location == ISP_STAT_LOC_UP_AND_DOWN) && (client->refFrameId <= pLastStat->upFrameIdStart) && (client->refFrameId <= pLastStat->downFrameIdStart)) ||
+        ((client->location == ISP_STAT_LOC_EXT) && (client->refFrameId <= pLastStat->extFrameId)))
     {
       /* Copy the stats into the client buffer */
       *(client->pStats) = *pLastStat;
@@ -1994,7 +2079,7 @@ ISP_StatusTypeDef ISP_SVC_Stats_GetNext(ISP_HandleTypeDef *hIsp, ISP_stat_ready_
   /* Register the callback */
   for (i = 0; i < ISP_SVC_STAT_MAX_CB; i++)
   {
-    if (ISP_SVC_StatEngine.client[i].callback == NULL)
+    if ((ISP_SVC_StatEngine.client[i].callback == NULL) || (ISP_SVC_StatEngine.client[i].callback == callback))
       break;
   }
 
@@ -2014,6 +2099,13 @@ ISP_StatusTypeDef ISP_SVC_Stats_GetNext(ISP_HandleTypeDef *hIsp, ISP_stat_ready_
     ISP_SVC_StatEngine.downRequest |= type;
   }
 
+  if (location & ISP_STAT_LOC_EXT)
+  {
+    /* initialize caller's pStats ext fields to safe default */
+    pStats->extStats.nbAreas = 0;
+    pStats->extStats.stats = NULL;
+  }
+
   if (type == ISP_STAT_TYPE_ALL_TMP)
   {
     /* Special case: request all stats for a short time (3 cycle) */
@@ -2029,4 +2121,141 @@ ISP_StatusTypeDef ISP_SVC_Stats_GetNext(ISP_HandleTypeDef *hIsp, ISP_stat_ready_
   ISP_SVC_StatEngine.client[i].refFrameId = refFrameId;
 
   return ISP_OK;
+}
+
+/**
+  * @brief  ISP_SVC_Stats_WeightedAverageL
+  *         Weighted averageL calculation
+  * @param  extStats: pointer to external statistics data
+  * @retval weighted averageL
+  */
+uint8_t ISP_SVC_Stats_WeightedAverageL(const ISP_ExternalStatsTypeDef *extStats)
+{
+  float sum = 0, wsum = 0;
+  for (uint8_t i = 0; i < extStats->nbAreas; ++i) {
+    sum += extStats->stats[i].averageL * extStats->stats[i].weight;
+    wsum += extStats->stats[i].weight;
+  }
+  return (wsum > 0) ? (uint8_t)(sum / wsum) : 0;
+}
+
+/**
+  * @brief  ISP_SVC_Stats_EvaluateUp
+  *         Evaluate average Up statistics from Down statistics by reverting ISP Gain and Black level
+  * @param  hIsp:  ISP device handle.
+  * @param  pDownStats: pointer to the input Down statistics
+  * @param  pUpStats:   pointer to the output Up statistics
+  */
+ISP_StatusTypeDef ISP_SVC_Stats_EvaluateUp(ISP_HandleTypeDef *hIsp, ISP_StatisticsTypeDef *pDownStats, ISP_StatisticsTypeDef *pUpStats)
+{
+  ISP_ISPGainTypeDef ISPGain;
+  ISP_BlackLevelTypeDef BlackLevel;
+  double upR, upG, upB;
+
+  upR = (double)pDownStats->averageR;
+  upG = (double)pDownStats->averageG;
+  upB = (double)pDownStats->averageB;
+
+  if ((ISP_SVC_ISP_GetGain(hIsp, &ISPGain) == ISP_OK) && ISPGain.enable && ISPGain.ispGainR && ISPGain.ispGainG && ISPGain.ispGainR)
+  {
+    /* Revert gain */
+    upR *= (double)ISP_GAIN_PRECISION_FACTOR / ISPGain.ispGainR;
+    upG *= (double)ISP_GAIN_PRECISION_FACTOR / ISPGain.ispGainG;
+    upB *= (double)ISP_GAIN_PRECISION_FACTOR / ISPGain.ispGainB;
+  }
+
+  if ((ISP_SVC_ISP_GetBlackLevel(hIsp, &BlackLevel) == ISP_OK) && BlackLevel.enable)
+  {
+    /* Revert black level compensation */
+    upR += BlackLevel.BLCR;
+    upG += BlackLevel.BLCG;
+    upB += BlackLevel.BLCB;
+  }
+
+  pUpStats->averageR = (uint8_t)(upR > 255 ? 255 : upR);
+  pUpStats->averageG = (uint8_t)(upG > 255 ? 255 : upG);
+  pUpStats->averageB = (uint8_t)(upB > 255 ? 255 : upB);
+
+  return ISP_OK;
+}
+
+/**
+  * @brief  ISP_SVC_Misc_GetEstimatedLux
+  *         Estimate the lux value of the scene captured by the sensor
+  * @param  hIsp: ISP device handle
+  *         averageL: luminance average statistic value of the area where the lux is estimated
+  * @retval estimated lux value (-1 if exposure is null, no possible estimation)
+  */
+int32_t ISP_SVC_Misc_GetEstimatedLux(ISP_HandleTypeDef *hIsp, uint8_t averageL)
+{
+  ISP_SensorExposureTypeDef exposureConfig;
+  ISP_SensorGainTypeDef gainConfig;
+  ISP_IQParamTypeDef *IQParamConfig;
+  double a, b, globalExposure;
+  int32_t lux;
+  ISP_StatusTypeDef ret = ISP_OK;
+
+  IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
+  ret = ISP_SVC_Sensor_GetExposure(hIsp, &exposureConfig);
+  if (ret != ISP_OK)
+  {
+    return -1;
+  }
+
+  ret = ISP_SVC_Sensor_GetGain(hIsp, &gainConfig);
+  if (ret != ISP_OK)
+  {
+    return -1;
+  }
+
+  if ((IQParamConfig->luxRef.HL_Expo1 == IQParamConfig->luxRef.HL_Expo2) ||
+      (IQParamConfig->luxRef.LL_Expo1 == IQParamConfig->luxRef.LL_Expo2) ||
+      (IQParamConfig->luxRef.HL_Lum1 == 0) ||
+      (IQParamConfig->luxRef.LL_Lum1 == 0))
+  {
+    /* Uncalibrated lux reference points */
+    return -1;
+  }
+
+
+  /* Calculate K coefficient value to estimate lux from current luminance and global exposure
+   * K = a * exposure + b;
+   * Lux = calibration_ factor * K * Luminance / exposure
+   */
+
+  /* Calculate a and b with the high lux references */
+  a = (IQParamConfig->luxRef.HL_LuxRef *
+       ((double)IQParamConfig->luxRef.HL_Expo1 / IQParamConfig->luxRef.HL_Lum1 -
+        (double)IQParamConfig->luxRef.HL_Expo2 / IQParamConfig->luxRef.HL_Lum2)) /
+      ((double)IQParamConfig->luxRef.HL_Expo1 - IQParamConfig->luxRef.HL_Expo2);
+
+  b = (IQParamConfig->luxRef.HL_LuxRef * (double)IQParamConfig->luxRef.HL_Expo1 / IQParamConfig->luxRef.HL_Lum1) -
+      (a * IQParamConfig->luxRef.HL_Expo1);
+
+  globalExposure = exposureConfig.exposure * pow(10, (double)gainConfig.gain / 20000);
+
+  if (globalExposure == 0)
+  {
+    return 0;
+  }
+
+  lux = (int32_t)((double)IQParamConfig->luxRef.calibFactor * (a * globalExposure + b) * averageL / globalExposure);
+
+  if (lux <= IQParamConfig->luxRef.HL_LuxRef * 0.9)
+  {
+    /* Calculate a and b with the low lux references to improve precision when lux is under 90% of the HL_LuxRef */
+    a = (IQParamConfig->luxRef.LL_LuxRef *
+         ((double)IQParamConfig->luxRef.LL_Expo1 / IQParamConfig->luxRef.LL_Lum1 -
+          (double)IQParamConfig->luxRef.LL_Expo2 / IQParamConfig->luxRef.LL_Lum2)) /
+        ((double)IQParamConfig->luxRef.LL_Expo1 - IQParamConfig->luxRef.LL_Expo2);
+
+    b = (IQParamConfig->luxRef.LL_LuxRef * (double)IQParamConfig->luxRef.LL_Expo1 / IQParamConfig->luxRef.LL_Lum1) -
+        (a * IQParamConfig->luxRef.LL_Expo1);
+
+    lux = (int32_t)((double)IQParamConfig->luxRef.calibFactor * (a * globalExposure + b) * averageL / globalExposure);
+  }
+
+  Meta.lux = (uint32_t)((lux < 0) ? 0 : lux);
+
+  return (lux < 0) ? 0 : lux;
 }

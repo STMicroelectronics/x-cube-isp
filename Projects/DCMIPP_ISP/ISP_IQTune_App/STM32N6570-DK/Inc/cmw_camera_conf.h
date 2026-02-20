@@ -42,8 +42,13 @@ extern "C" {
 /**
   * @brief This is the list of modules to be used in the HAL driver
   */
-#define USE_VD66GY_SENSOR
+
 #define USE_IMX335_SENSOR
+#define USE_VD66GY_SENSOR
+#define USE_VD5943_SENSOR
+#define USE_VD1943_SENSOR
+#define USE_VD65G4_SENSOR
+#define USE_VD56G3_SENSOR
 
 #ifdef __cplusplus
 }

@@ -32,7 +32,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     .AECAlgo = {
         .enable = 1,
         .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
-        .antiFlickerFreq = 0,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
     },
     .statRemoval = {
         .enable = 0,
@@ -73,7 +73,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     },
     .AWBAlgo = {
         .enable = 1,
-        .id = { "MiniLBox A", "MiniLBox TL84", "MiniLBox D65", "", "", },
+        .label = { "MiniLBox A", "MiniLBox TL84", "MiniLBox D65", "", "", },
         .referenceColorTemp = { 2665, 3750, 6140, 0, 0, },
         .ispGainR = { 100000000, 119000000, 167000000, 0, 0, },
         .ispGainG = { 111000000, 100000000, 100000000, 0, 0, },
@@ -84,6 +84,13 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
             { { 176220000, -48360000, -27860000, }, { -40050000, 158080000, -18020000, }, { -5650000, -61180000, 166820000, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 80, 65, 30 },
+            { 69, 70, 38 },
+            { 54, 70, 45 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
         },
     },
     .contrast = {
@@ -109,6 +116,19 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     },
     .sensorDelay = {
         .delay = 4,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1400,
+        .HL_Expo1 = 2000,
+        .HL_Lum1 = 42,
+        .HL_Expo2 = 20000,
+        .HL_Lum2 = 200,
+        .LL_LuxRef = 300,
+        .LL_Expo1 = 5000,
+        .LL_Lum1 = 20,
+        .LL_Expo2 = 29827,
+        .LL_Lum2 = 111,
+        .calibFactor = 0.738f,
     },
 };
 

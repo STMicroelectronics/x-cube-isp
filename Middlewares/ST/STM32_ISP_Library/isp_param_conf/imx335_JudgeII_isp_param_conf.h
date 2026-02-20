@@ -32,7 +32,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     .AECAlgo = {
         .enable = 1,
         .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
-        .antiFlickerFreq = 0,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
     },
     .statRemoval = {
         .enable = 0,
@@ -73,17 +73,24 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     },
     .AWBAlgo = {
         .enable = 1,
-        .id = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "Free Slot", "Free Slot", },
+        .label = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "Free Slot", "Free Slot", },
         .referenceColorTemp = { 2810, 4015, 6650, 0, 0, },
-        .ispGainR = { 137000000, 182000000, 244000000, 0, 0, },
+        .ispGainR = { 124000000, 182000000, 244000000, 0, 0, },
         .ispGainG = { 100000000, 100000000, 100000000, 0, 0, },
-        .ispGainB = { 287000000, 212000000, 143000000, 0, 0, },
+        .ispGainB = { 282000000, 212000000, 143000000, 0, 0, },
         .coeff = {
-            { { 159760000, -9780000, -49990000, }, { -45530000, 171540000, -26000000, }, { -3300000, -110120000, 213430000, }, },
+            { { 82450000, 90560000, -73010000, }, { -65469999, 181020000, -15559999, }, { -30490000, -52940000, 183430000, }, },
             { { 164670000, -20970000, -43700000, }, { -51330000, 178670000, -27339999, }, { -12490000, -48170000, 160670000, }, },
             { { 150570000, 2440000, -53010000, }, { -37350000, 193760000, -56420000, }, { -11100000, -35490000, 146590000, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 61, 65, 30},
+            { 46, 68, 37 },
+            { 38, 68, 49 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
         },
     },
     .contrast = {
@@ -109,6 +116,19 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     },
     .sensorDelay = {
         .delay = 3,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1050,
+        .HL_Expo1 = 5000,
+        .HL_Lum1 = 20,
+        .HL_Expo2 = 33266,
+        .HL_Lum2 = 117,
+        .LL_LuxRef = 270,
+        .LL_Expo1 = 9000,
+        .LL_Lum1 = 10,
+        .LL_Expo2 = 33266,
+        .LL_Lum2 = 36,
+        .calibFactor = 0.905f,
     },
 };
 

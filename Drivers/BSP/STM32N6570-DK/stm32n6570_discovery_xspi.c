@@ -118,7 +118,7 @@ XSPI_NOR_Ctx_t XSPI_Nor_Ctx[XSPI_NOR_INSTANCES_NUMBER]  = {{
 /** @addtogroup STM32N6570_DK_XSPI_RAM_Exported_Variables
   * @{
   */
-extern XSPI_RAM_Ctx_t XSPI_Ram_Ctx[XSPI_NOR_INSTANCES_NUMBER];
+extern XSPI_RAM_Ctx_t XSPI_Ram_Ctx[XSPI_RAM_INSTANCES_NUMBER];
 
 XSPI_HandleTypeDef hxspi_ram[XSPI_RAM_INSTANCES_NUMBER] = {0};
 
@@ -232,7 +232,7 @@ int32_t BSP_XSPI_NOR_Init(uint32_t Instance, BSP_XSPI_NOR_Init_t *Init)
 
       /* Fill config structure */
       xspi_init.ClockPrescaler = 0x03; /* XSPI clock = 200MHz / ClockPrescaler = 50MHz, then switch to 200MHz*/
-      xspi_init.MemorySize     = (uint32_t)POSITION_VAL((uint32_t)pInfo.FlashSize);
+      xspi_init.MemorySize     = (uint32_t)POSITION_VAL((uint32_t)pInfo.FlashSize) - 1U;
       xspi_init.SampleShifting = HAL_XSPI_SAMPLE_SHIFT_NONE;
       xspi_init.TransferRate   = (uint32_t)Init->TransferRate;
 
@@ -1643,6 +1643,24 @@ static void XSPI_NOR_MspDeInit(const XSPI_HandleTypeDef *hxspi)
 static int32_t XSPI_NOR_ResetMemory(uint32_t Instance)
 {
   int32_t ret = BSP_ERROR_NONE;
+  uint8_t reg[2], ResetRecoTime = 0U;
+
+  /* Check first the register memory in current mode */
+  if (MX66UW1G45G_ReadStatusRegister(&hxspi_nor[Instance], XSPI_Nor_Ctx[Instance].InterfaceMode,
+                                          XSPI_Nor_Ctx[Instance].TransferRate, reg) != MX66UW1G45G_OK)
+  {
+     /* Do nothing as maybe nor flash is not accessible */
+  }
+  /* Check the value of the register */
+  else if ((reg[0] & MX66UW1G45G_SR_WIP) != 0U)
+  {
+    /* Enable Wait Reset Recovery Time after Reset cmd (WIP detected)*/
+    ResetRecoTime = 1U;
+  }
+  else
+  {
+    /* Do nothing */
+  }
 
   if (MX66UW1G45G_ResetEnable(&hxspi_nor[Instance], BSP_XSPI_NOR_SPI_MODE,
                                     BSP_XSPI_NOR_STR_TRANSFER) != MX66UW1G45G_OK)
@@ -1681,7 +1699,10 @@ static int32_t XSPI_NOR_ResetMemory(uint32_t Instance)
     XSPI_Nor_Ctx[Instance].TransferRate  = BSP_XSPI_NOR_STR_TRANSFER; /* After reset S/W setting to STR mode        */
 
     /* After SWreset CMD, wait in case SWReset occurred during erase operation */
-    HAL_Delay(MX66UW1G45G_RESET_MAX_TIME);
+    if (ResetRecoTime == 1U)
+    {
+      HAL_Delay(MX66UW1G45G_RESET_MAX_TIME);
+    }
   }
 
   /* Return BSP status */
@@ -1728,15 +1749,7 @@ static int32_t XSPI_NOR_EnterDOPIMode(uint32_t Instance)
     /* Wait that the configuration is effective and check that memory is ready */
     HAL_Delay(MX66UW1G45G_WRITE_REG_MAX_TIME);
 
-    /* Reconfigure the memory type of the peripheral */
-    hxspi_nor[Instance].Init.MemoryType            = HAL_XSPI_MEMTYPE_MACRONIX;
-    hxspi_nor[Instance].Init.DelayHoldQuarterCycle = HAL_XSPI_DHQC_ENABLE;
-    if (HAL_XSPI_Init(&hxspi_nor[Instance]) != HAL_OK)
-    {
-      ret = BSP_ERROR_PERIPH_FAILURE;
-    }
-    /* Check Flash busy ? */
-    else if (MX66UW1G45G_AutoPollingMemReady(&hxspi_nor[Instance], BSP_XSPI_NOR_OPI_MODE,
+    if (MX66UW1G45G_AutoPollingMemReady(&hxspi_nor[Instance], BSP_XSPI_NOR_OPI_MODE,
                                               BSP_XSPI_NOR_DTR_TRANSFER) != MX66UW1G45G_OK)
     {
       ret = BSP_ERROR_COMPONENT_FAILURE;

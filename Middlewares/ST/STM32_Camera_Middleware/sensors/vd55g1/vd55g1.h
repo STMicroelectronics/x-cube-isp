@@ -32,6 +32,15 @@
 #define VD55G1_MAX_WIDTH  804
 #define VD55G1_MAX_HEIGHT 704
 
+/* Analog gain [1, 8] is computed with the following logic :
+ * 32/(32 - again_reg), with again_reg in the range [0, 28] */
+#define VD55G1_ANALOG_GAIN_MIN  0
+#define VD55G1_ANALOG_GAIN_MAX  28
+/* Digital gain [1.00, 32.00] is coded as a Fixed Point 5.8
+ * which corresponds to sensor values in the range [0x100, 0x400] */
+#define VD55G1_DIGITAL_GAIN_MIN 0x100
+#define VD55G1_DIGITAL_GAIN_MAX 0x400
+
 enum {
   VD55G1_MIN_FPS = 2,
   VD55G1_MAX_FPS = 168,
@@ -69,6 +78,12 @@ typedef enum {
   VD55G1_FLICKER_FREE_60HZ
 } VD55G1_Flicker_t;
 
+typedef enum {
+  VD55G1_EXPOSURE_MODE_AUTO = 0,
+  VD55G1_EXPOSURE_MODE_FREEZE = 1,
+  VD55G1_EXPOSURE_MODE_MANUAL = 2,
+} VD55G1_ExposureMode_t;
+
 enum {
   VD55G1_MIN_BRIGHTNESS = 0,
   VD55G1_MAX_BRIGHTNESS = 100,
@@ -76,7 +91,7 @@ enum {
 
 enum {
   VD55G1_MIN_DATARATE = 250000000,
-  VD55G1_DEFAULT_DATARATE = 804000000,
+  VD55G1_DEFAULT_DATARATE = 1200000000,
   VD55G1_MAX_DATARATE = 1200000000,
 };
 
@@ -138,11 +153,20 @@ typedef struct {
   VD55G1_MirrorFlip_t flip_mirror_mode;
   VD55G1_PatGen_t patgen;
   VD55G1_Flicker_t flicker;
+  uint8_t pixel_depth;
   VD55G1_OutItf_Config_t out_itf;
   VD55G1_AWUConfig_t awu;
   /* VD55G1_GPIO_Mode_t | VD55G1_GPIO_Value_t | VD55G1_GPIO_Polarity_t */
   uint8_t gpio_ctrl[VD55G1_GPIO_NB];
 } VD55G1_Config_t;
+
+typedef enum {
+  VD55G1_BAYER_NONE,
+  VD55G1_BAYER_RGGB,
+  VD55G1_BAYER_GRBG,
+  VD55G1_BAYER_GBRG,
+  VD55G1_BAYER_BGGR,
+} VD55G1_Bayer_t;
 
 typedef struct VD55G1_Ctx
 {
@@ -157,12 +181,18 @@ typedef struct VD55G1_Ctx
   int (*write_array)(struct VD55G1_Ctx *ctx, uint16_t addr, uint8_t *data, int data_len);
   void (*delay)(struct VD55G1_Ctx *ctx, uint32_t delay_in_ms);
   void (*log)(struct VD55G1_Ctx *ctx, int lvl, const char *format, va_list ap);
+  VD55G1_Bayer_t bayer;
   /* driver internals. do not touch */
   struct drv_ctx {
     int state;
     int cut_version;
+    uint8_t is_mono;
     uint32_t pclk;
     VD55G1_Config_t config_save;
+    uint8_t exposure_mode;
+    uint16_t manual_coarse_integration;
+    uint8_t manual_analog_gain;
+    uint16_t manual_digital_gain;
   } ctx;
 } VD55G1_Ctx_t;
 
@@ -175,6 +205,11 @@ int VD55G1_SetFlipMirrorMode(VD55G1_Ctx_t *ctx, VD55G1_MirrorFlip_t mode);
 int VD55G1_GetBrightnessLevel(VD55G1_Ctx_t *ctx, int *level);
 int VD55G1_SetBrightnessLevel(VD55G1_Ctx_t *ctx, int level);
 int VD55G1_SetFlickerMode(VD55G1_Ctx_t *ctx, VD55G1_Flicker_t mode);
+int VD55G1_SetExposureMode(VD55G1_Ctx_t *ctx, VD55G1_ExposureMode_t mode);
+int VD55G1_SetAnalogGain(VD55G1_Ctx_t *ctx, int gain);
+int VD55G1_SetDigitalGain(VD55G1_Ctx_t *ctx, int gain);
+int VD55G1_SetExposureTime(VD55G1_Ctx_t *ctx, int exposure_us);
+int VD55G1_GetExposureRegRange(VD55G1_Ctx_t *ctx, uint32_t *min_us, uint32_t *max_us);
 
 #ifdef __cplusplus
 }

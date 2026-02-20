@@ -1,6 +1,6 @@
 # X-CUBE-ISP
 
-![latest tag](https://img.shields.io/badge/tag-1.2.0-blue)
+![latest tag](https://img.shields.io/badge/tag-2.0.0-blue)
 
 The X-CUBE-ISP package provides the functionnality to control and tune the
 DCMIPP ISP present in the STM32N6x products.<br>
@@ -58,9 +58,13 @@ README Content
   - An additionnal USB-C cable to connect USB1 (CN18) to the host computer for
   the STM32 ISP IQTune desktop application connection
 
-- 2 camera modules are supported:
+- 6 camera modules are supported:
   - MB1854B IMX335 (Default camera provided with the MB1939 STM32N6570-DK board)
   - STEVAL-66GYMAI VD66GY camera module
+  - VD5943 (MONO)
+  - VD1943
+  - VD65G4
+  - VD56G3 (MONO)
 
 Note:<br>
 - The support of customer sensors is possible since customer respect the driver

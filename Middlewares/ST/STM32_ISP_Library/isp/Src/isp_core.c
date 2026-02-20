@@ -34,7 +34,10 @@
 /* Private function prototypes -----------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
+/* Global variables ----------------------------------------------------------*/
+ISP_StatusTypeDef ISP_Status = ISP_OK;
 
+extern ISP_MetaTypeDef Meta;
 /* Exported functions --------------------------------------------------------*/
 /**
   * @brief  ISP_Init
@@ -123,15 +126,15 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
   {
     decimation.factor = ISP_DECIM_FACTOR_1;
   }
-  else if ((hIsp->sensorInfo.width  / ISP_DECIM_FACTOR_2) < ISP_RAW_MAX_WIDTH)
+  else if ((hIsp->sensorInfo.width / ISP_DECIM_FACTOR_2) < ISP_RAW_MAX_WIDTH)
   {
     decimation.factor = ISP_DECIM_FACTOR_2;
   }
-  else if ((hIsp->sensorInfo.width  / ISP_DECIM_FACTOR_4) < ISP_RAW_MAX_WIDTH)
+  else if ((hIsp->sensorInfo.width / ISP_DECIM_FACTOR_4) < ISP_RAW_MAX_WIDTH)
   {
     decimation.factor = ISP_DECIM_FACTOR_4;
   }
-  else if ((hIsp->sensorInfo.width  / ISP_DECIM_FACTOR_8) < ISP_RAW_MAX_WIDTH)
+  else if ((hIsp->sensorInfo.width / ISP_DECIM_FACTOR_8) < ISP_RAW_MAX_WIDTH)
   {
     decimation.factor = ISP_DECIM_FACTOR_8;
   }
@@ -289,6 +292,18 @@ ISP_StatusTypeDef ISP_Start(ISP_HandleTypeDef *hIsp)
   /* Configure statistic area if not already configured by ISP_SetStatArea() */
   if ((hIsp->statArea.XSize == 0) || (hIsp->statArea.YSize == 0))
   {
+    if ((IQParamConfig->statAreaStatic.XSize == 0) || (IQParamConfig->statAreaStatic.XSize == ISP_STATWINDOW_MAX))
+    {
+      /* Configure static area width to the maximum value */
+      IQParamConfig->statAreaStatic.XSize = hIsp->sensorInfo.width - IQParamConfig->statAreaStatic.X0;
+    }
+
+    if ((IQParamConfig->statAreaStatic.YSize == 0) || (IQParamConfig->statAreaStatic.YSize == ISP_STATWINDOW_MAX))
+    {
+      /* Configure static area height to the maximum value */
+      IQParamConfig->statAreaStatic.YSize = hIsp->sensorInfo.height - IQParamConfig->statAreaStatic.Y0;
+    }
+
     /* Configure statistic area from IQ params */
     ret = ISP_SVC_ISP_SetStatArea(hIsp, &IQParamConfig->statAreaStatic);
     if (ret != ISP_OK)
@@ -305,17 +320,13 @@ ISP_StatusTypeDef ISP_Start(ISP_HandleTypeDef *hIsp)
 
   /* Initialize the exposure target based on the selected exposure compensation */
   IQParamConfig->AECAlgo.exposureTarget = (uint32_t) (ISP_IDEAL_TARGET_EXPOSURE * pow(2, (float)IQParamConfig->AECAlgo.exposureCompensation / 2));
+  Meta.exposureTarget = IQParamConfig->AECAlgo.exposureTarget;
 
   return ISP_OK;
 }
 
-/**
-  * @brief  ISP_BackgroundProcess
-  *         Run the background process of the ISP device
-  * @param  hIsp: ISP device handle
-  * @retval ISP status
-  */
-ISP_StatusTypeDef ISP_BackgroundProcess(ISP_HandleTypeDef *hIsp)
+/* Wrapped by ISP_BackgroundProcess() */
+static ISP_StatusTypeDef _ISP_BackgroundProcess(ISP_HandleTypeDef *hIsp)
 {
   ISP_StatusTypeDef retAlgo, retStats;
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
@@ -360,6 +371,30 @@ ISP_StatusTypeDef ISP_BackgroundProcess(ISP_HandleTypeDef *hIsp)
 }
 
 /**
+  * @brief  ISP_BackgroundProcess
+  *         Run the background process of the ISP device
+  * @param  hIsp: ISP device handle
+  * @retval ISP status
+  */
+ISP_StatusTypeDef ISP_BackgroundProcess(ISP_HandleTypeDef *hIsp)
+{
+  ISP_Status = _ISP_BackgroundProcess(hIsp);
+  return ISP_Status;
+}
+
+/**
+  * @brief  ISP_GetStatus
+  *         Get the overal ISP status (as returned by ISP_BackgroundProcess)
+  * @param  hIsp: ISP device handle
+  * @retval ISP status
+  */
+ISP_StatusTypeDef ISP_GetStatus(ISP_HandleTypeDef *hIsp)
+{
+  (void)hIsp; /* unused */
+  return ISP_Status;
+}
+
+/**
   * @brief  ISP_SetExposureTarget
   *         Update the exposure target used by the AEC algorithm
   * @param  hIsp: ISP device handle
@@ -373,6 +408,7 @@ ISP_StatusTypeDef ISP_SetExposureTarget(ISP_HandleTypeDef *hIsp, ISP_ExposureCom
   IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
   IQParamConfig->AECAlgo.exposureCompensation = ExposureCompensation;
   IQParamConfig->AECAlgo.exposureTarget = (uint32_t) (ISP_IDEAL_TARGET_EXPOSURE * pow(2, (float)ExposureCompensation / 2));
+  Meta.exposureTarget = IQParamConfig->AECAlgo.exposureTarget;
 
   return ISP_OK;
 }
@@ -580,6 +616,31 @@ ISP_StatusTypeDef ISP_GetStatArea(ISP_HandleTypeDef *hIsp, ISP_StatAreaTypeDef *
 }
 
 /**
+  * @brief  ISP_EnableRestartState
+  *         Enable the Restart State mode. When enabled, when the system restarts the ISP middleware,
+  *         its configuration is set just as it was at its latest update.
+  * @param  hIsp: ISP device handle
+  * @param  pRestartState: Pointer to the Restart State. To use this mode in a Low Power use case, where
+  *         the ISP state is applied at system wake up, this pointer must be in some retention memory.
+  * @retval Operation status
+  */
+ISP_StatusTypeDef ISP_EnableRestartState(ISP_HandleTypeDef *hIsp, ISP_RestartStateTypeDef *pRestartState)
+{
+  return ISP_SVC_SetRestartState(hIsp, pRestartState);
+}
+
+/**
+  * @brief  ISP_DisableRestartState
+  *         Disable the Restart State mode.
+  * @param  hIsp: ISP device handle
+  * @retval Operation status
+  */
+ISP_StatusTypeDef ISP_DisableRestartState(ISP_HandleTypeDef *hIsp)
+{
+  return ISP_SVC_SetRestartState(hIsp, NULL);
+}
+
+/**
   * @brief  ISP_GatherStatistics
   *         Gather statistics
   * @param  hIsp: ISP device handle
@@ -620,7 +681,7 @@ uint32_t ISP_GetMainFrameId(ISP_HandleTypeDef *hIsp)
   */
 void ISP_IncAncillaryFrameId(ISP_HandleTypeDef *hIsp)
 {
-	ISP_SVC_Misc_IncAncillaryFrameId(hIsp);
+  ISP_SVC_Misc_IncAncillaryFrameId(hIsp);
 }
 
 /**
@@ -664,11 +725,54 @@ uint32_t ISP_GetDumpFrameId(ISP_HandleTypeDef *hIsp)
   */
 void ISP_OutputMeta(ISP_HandleTypeDef *hIsp)
 {
-  extern ISP_MetaTypeDef Meta;
-
   if (Meta.outputEnable)
   {
-    printf("Meta[%"PRIu32"]: L = %"PRIu16", TG = %"PRIu32", G = %"PRIu32", E = %"PRIu32", CT = %"PRIu32"\r\n",
-           hIsp->MainPipe_FrameCount, Meta.averageL, Meta.exposureTarget, Meta.gain, Meta.exposure, Meta.colorTemp);
+    printf("Meta[%"PRIu32"]: L = %"PRIu16", TG = %"PRIu32", G = %"PRIu32", E = %"PRIu32", CT = %"PRIu32", LUX = %"PRIu32"\r\n",
+           hIsp->MainPipe_FrameCount, Meta.averageL, Meta.exposureTarget, Meta.gain, Meta.exposure, Meta.colorTemp, Meta.lux);
   }
+}
+
+/**
+ * @brief  ISP_GetLuxEstimation
+ *         Get estimated lux value of the current scene
+ * @param  hIsp: ISP device handle
+ * @param  pLux: Pointer to lux value
+ * @retval Operation status
+ */
+ISP_StatusTypeDef ISP_GetLuxEstimation(ISP_HandleTypeDef *hIsp, uint32_t *pLux)
+{
+  ISP_StatusTypeDef ret = ISP_OK;
+  ISP_SVC_StatStateTypeDef stats;
+  int32_t lux;
+  uint8_t averageL;
+
+  ret = ISP_SVC_Stats_GetLatest(hIsp, &stats);
+  if (ret != ISP_OK)
+  {
+     return ISP_ERR_STAT_EINVAL;
+  }
+
+  /* Use weighted averageL from external stats if available and callback is defined */
+  if (hIsp->appliHelpers.GetExternalStatistics != NULL &&
+      stats.extStats.nbAreas > 0 && stats.extStats.stats != NULL)
+  {
+    averageL = ISP_SVC_Stats_WeightedAverageL(&stats.extStats);
+  }
+  else
+  {
+    averageL = stats.down.averageL;
+  }
+
+  lux = ISP_SVC_Misc_GetEstimatedLux(hIsp, averageL);
+
+  if ((pLux == NULL) || (lux < 0))
+  {
+    ret = ISP_ERR_EINVAL;
+  }
+  else
+  {
+    *pLux = (uint32_t)lux;
+  }
+
+  return ret;
 }

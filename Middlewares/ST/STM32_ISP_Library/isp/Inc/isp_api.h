@@ -35,6 +35,7 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp, void *hDcmipp, uint32_t Came
 ISP_StatusTypeDef ISP_DeInit(ISP_HandleTypeDef *hIsp);
 ISP_StatusTypeDef ISP_Start(ISP_HandleTypeDef *hIsp);
 ISP_StatusTypeDef ISP_BackgroundProcess(ISP_HandleTypeDef *hIsp);
+ISP_StatusTypeDef ISP_GetStatus(ISP_HandleTypeDef *hIsp);
 
 ISP_StatusTypeDef ISP_SetExposureTarget(ISP_HandleTypeDef *hIsp, ISP_ExposureCompTypeDef ExposureCompensation);
 ISP_StatusTypeDef ISP_GetExposureTarget(ISP_HandleTypeDef *hIsp, ISP_ExposureCompTypeDef *pExposureCompensation, uint32_t *pExposureTarget);
@@ -46,6 +47,9 @@ ISP_StatusTypeDef ISP_GetWBRefMode(ISP_HandleTypeDef *hIsp, uint8_t *pAutomatic,
 ISP_StatusTypeDef ISP_GetDecimationFactor(ISP_HandleTypeDef *hIsp, ISP_DecimationTypeDef *pDecimation);
 ISP_StatusTypeDef ISP_SetStatArea(ISP_HandleTypeDef *hIsp, ISP_StatAreaTypeDef *pStatArea);
 ISP_StatusTypeDef ISP_GetStatArea(ISP_HandleTypeDef *hIsp, ISP_StatAreaTypeDef *pStatArea);
+ISP_StatusTypeDef ISP_GetLuxEstimation(ISP_HandleTypeDef *hIsp, uint32_t *pLux);
+ISP_StatusTypeDef ISP_EnableRestartState(ISP_HandleTypeDef *hIsp, ISP_RestartStateTypeDef *pRestartState);
+ISP_StatusTypeDef ISP_DisableRestartState(ISP_HandleTypeDef *hIsp);
 
 void ISP_GatherStatistics(ISP_HandleTypeDef *hIsp);
 void ISP_IncMainFrameId(ISP_HandleTypeDef *hIsp);

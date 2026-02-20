@@ -32,7 +32,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     .AECAlgo = {
         .enable = 1,
         .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
-        .antiFlickerFreq = 0,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
     },
     .statRemoval = {
         .enable = 0,
@@ -73,17 +73,24 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     },
     .AWBAlgo = {
         .enable = 1,
-        .id = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "Free Slot", "Free Slot", },
+        .label = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "", "", },
         .referenceColorTemp = { 2810, 4015, 6650, 0, 0, },
-        .ispGainR = { 137000000, 182000000, 244000000, 0, 0, },
+        .ispGainR = { 124000000, 182000000, 244000000, 0, 0, },
         .ispGainG = { 100000000, 100000000, 100000000, 0, 0, },
-        .ispGainB = { 287000000, 212000000, 143000000, 0, 0, },
+        .ispGainB = { 282000000, 212000000, 143000000, 0, 0, },
         .coeff = {
-            { { 159760000, -9780000, -49990000, }, { -45530000, 171540000, -26000000, }, { -3300000, -110120000, 213430000, }, },
+            { { 82450000, 90560000, -73010000, }, { -65469999, 181020000, -15559999, }, { -30490000, -52940000, 183430000, }, },
             { { 164670000, -20970000, -43700000, }, { -51330000, 178670000, -27339999, }, { -12490000, -48170000, 160670000, }, },
             { { 150570000, 2440000, -53010000, }, { -37350000, 193760000, -56420000, }, { -11100000, -35490000, 146590000, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 61, 65, 30},
+            { 46, 68, 37 },
+            { 38, 68, 49 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
         },
     },
     .contrast = {
@@ -110,6 +117,19 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     .sensorDelay = {
         .delay = 3,
     },
+    .luxRef = {
+        .HL_LuxRef = 1050,
+        .HL_Expo1 = 5000,
+        .HL_Lum1 = 20,
+        .HL_Expo2 = 33266,
+        .HL_Lum2 = 117,
+        .LL_LuxRef = 270,
+        .LL_Expo1 = 9000,
+        .LL_Lum1 = 10,
+        .LL_Expo2 = 33266,
+        .LL_Lum2 = 36,
+        .calibFactor = 0.905f,
+    },
 };
 
 /* DCMIPP ISP configuration for VD66GY sensor */
@@ -123,7 +143,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     .AECAlgo = {
         .enable = 1,
         .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
-        .antiFlickerFreq = 0,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
     },
     .statRemoval = {
         .enable = 0,
@@ -164,7 +184,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     },
     .AWBAlgo = {
         .enable = 1,
-        .id = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "", "", },
+        .label = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "", "", },
         .referenceColorTemp = { 2750, 4150, 6750, 0, 0, },
         .ispGainR = { 95000000, 117000000, 156000000, 0, 0, },
         .ispGainG = { 100000000, 100000000, 100000000, 0, 0, },
@@ -175,6 +195,13 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
             { { 146010000, -39280000, -14060000, }, { -26750000, 152490000, -42520000, }, { 1160000, -55410000, 143910000, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 80, 65, 30 },
+            { 69, 70, 38 },
+            { 54, 70, 45 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
         },
     },
     .contrast = {
@@ -201,11 +228,580 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD66GY = {
     .sensorDelay = {
         .delay = 4,
     },
+    .luxRef = {
+        .HL_LuxRef = 1400,
+        .HL_Expo1 = 2000,
+        .HL_Lum1 = 42,
+        .HL_Expo2 = 20000,
+        .HL_Lum2 = 200,
+        .LL_LuxRef = 300,
+        .LL_Expo1 = 5000,
+        .LL_Lum1 = 20,
+        .LL_Expo2 = 29827,
+        .LL_Lum2 = 111,
+        .calibFactor = 0.738f,
+    },
+};
+
+/* DCMIPP ISP configuration for VD5943 sensor (mono)*/
+static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD5943 = {
+    .sensorGainStatic = {
+        .gain = 0,
+    },
+    .sensorExposureStatic = {
+        .exposure = 0,
+    },
+    .AECAlgo = {
+        .enable = 1,
+        .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
+    },
+    .statRemoval = {
+        .enable = 0,
+        .nbHeadLines = 0,
+        .nbValidLines = 0,
+    },
+    .badPixelStatic = {
+        .enable = 0,
+        .strength = 0,
+    },
+    .badPixelAlgo = {
+        .enable = 0,
+        .threshold = 0,
+    },
+    .blackLevelStatic = {
+        .enable = 1,
+        .BLCR = 2,
+        .BLCG = 2,
+        .BLCB = 2,
+    },
+    .demosaicing = {
+        .enable = 0,
+        .type = ISP_DEMOS_TYPE_MONO,
+        .peak = 0,
+        .lineV = 0,
+        .lineH = 0,
+        .edge = 0,
+    },
+    .ispGainStatic = {
+        .enable = 0,
+        .ispGainR = 0,
+        .ispGainG = 0,
+        .ispGainB = 0,
+    },
+    .colorConvStatic = {
+        .enable = 0,
+        .coeff = { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, }
+    },
+    .AWBAlgo = {
+        .enable = 0,
+        .label = { "", "", "", "", "", },
+        .referenceColorTemp = { 0, 0, 0, 0, 0, },
+        .ispGainR = { 0, 0, 0, 0, 0, },
+        .ispGainG = { 0, 0, 0, 0, 0, },
+        .ispGainB = { 0, 0, 0, 0, 0, },
+        .coeff = {
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+        },
+    },
+    .contrast = {
+        .enable = 0,
+        .coeff.LUM_0 = 0,
+        .coeff.LUM_32 = 0,
+        .coeff.LUM_64 = 0,
+        .coeff.LUM_96 = 0,
+        .coeff.LUM_128 = 0,
+        .coeff.LUM_160 = 0,
+        .coeff.LUM_192 = 0,
+        .coeff.LUM_224 = 0,
+        .coeff.LUM_256 = 0,
+    },
+    .statAreaStatic = {
+        .X0 = 640,
+        .Y0 = 496,
+        .XSize = 1280,
+        .YSize = 992,
+    },
+    .gamma = {
+        .enable = 1,
+    },
+    .sensorDelay = {
+        .delay = 4,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1090,
+        .HL_Expo1 = 482,
+        .HL_Lum1 = 26,
+        .HL_Expo2 = 2082,
+        .HL_Lum2 = 109,
+        .LL_LuxRef = 234,
+        .LL_Expo1 = 2286,
+        .LL_Lum1 = 28,
+        .LL_Expo2 = 5486,
+        .LL_Lum2 = 69,
+        .calibFactor = 0.999f,
+    },
+};
+
+/* DCMIPP ISP configuration for VD1943 sensor (rgb)*/
+static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD1943 = {
+    .sensorGainStatic = {
+        .gain = 0,
+    },
+    .sensorExposureStatic = {
+        .exposure = 0,
+    },
+    .AECAlgo = {
+        .enable = 1,
+        .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
+    },
+    .statRemoval = {
+        .enable = 0,
+        .nbHeadLines = 0,
+        .nbValidLines = 0,
+    },
+    .badPixelStatic = {
+        .enable = 0,
+        .strength = 0,
+    },
+    .badPixelAlgo = {
+        .enable = 0,
+        .threshold = 0,
+    },
+    .blackLevelStatic = {
+        .enable = 1,
+        .BLCR = 2,
+        .BLCG = 2,
+        .BLCB = 2,
+    },
+    .demosaicing = {
+        .enable = 1,
+        .type = ISP_DEMOS_TYPE_GBRG,
+        .peak = 2,
+        .lineV = 4,
+        .lineH = 4,
+        .edge = 6,
+    },
+    .ispGainStatic = {
+        .enable = 0,
+        .ispGainR = 0,
+        .ispGainG = 0,
+        .ispGainB = 0,
+    },
+    .colorConvStatic = {
+        .enable = 0,
+        .coeff = { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, }
+    },
+    .AWBAlgo = {
+        .enable = 1,
+        .label = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", "", "" },
+        .referenceColorTemp = { 2810, 4015, 6650, 0, 0, },
+        .ispGainR = { 100000000, 129000000, 169000000, 0, 0, },
+        .ispGainG = { 110000000, 100000000, 100000000, 0, 0, },
+        .ispGainB = { 313000000, 218000000, 149000000, 0, 0, },
+        .coeff = {
+            { { 128099999, 68470000, -96580000, }, { -45100000, 158710000, -13610000, }, { -24710000, -106030000, 230740000, }, },
+            { { 137580000, -4290000, -33289999, }, { -39140000, 147480000, -8340000, }, { -4730000, -58500000, 163230000, }, },
+            { { 131870000, 12850000, -44730000, }, { -27980000, 168410000, -40420000, }, { -4500000, -45190000, 149690000, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 68, 51, 18},
+            { 54, 59, 24},
+            { 42, 58, 36},
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+        },
+    },
+    .contrast = {
+        .enable = 0,
+        .coeff.LUM_0 = 0,
+        .coeff.LUM_32 = 0,
+        .coeff.LUM_64 = 0,
+        .coeff.LUM_96 = 0,
+        .coeff.LUM_128 = 0,
+        .coeff.LUM_160 = 0,
+        .coeff.LUM_192 = 0,
+        .coeff.LUM_224 = 0,
+        .coeff.LUM_256 = 0,
+    },
+    .statAreaStatic = {
+        .X0 = 512,
+        .Y0 = 396,
+        .XSize = 1536,
+        .YSize = 1190,
+    },
+    .gamma = {
+        .enable = 1,
+    },
+    .sensorDelay = {
+        .delay = 4,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1090,
+        .HL_Expo1 = 2457,
+        .HL_Lum1 = 29,
+        .HL_Expo2 = 8857,
+        .HL_Lum2 = 101,
+        .LL_LuxRef = 234,
+        .LL_Expo1 = 10456,
+        .LL_Lum1 = 29,
+        .LL_Expo2 = 24028,
+        .LL_Lum2 = 66,
+        .calibFactor = 0.982f,
+     },
+};
+
+/* DCMIPP ISP configuration for VD65G4 sensor (rgb)*/
+static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD65G4 = {
+    .sensorGainStatic = {
+        .gain = 0,
+    },
+    .sensorExposureStatic = {
+        .exposure = 0,
+    },
+    .AECAlgo = {
+        .enable = 1,
+        .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
+    },
+    .statRemoval = {
+        .enable = 0,
+        .nbHeadLines = 0,
+        .nbValidLines = 0,
+    },
+    .badPixelStatic = {
+        .enable = 0,
+        .strength = 0,
+    },
+    .badPixelAlgo = {
+        .enable = 0,
+        .threshold = 0,
+    },
+    .blackLevelStatic = {
+        .enable = 1,
+        .BLCR = 2,
+        .BLCG = 2,
+        .BLCB = 2,
+    },
+    .demosaicing = {
+        .enable = 1,
+        .type = ISP_DEMOS_TYPE_RGGB,
+        .peak = 2,
+        .lineV = 4,
+        .lineH = 4,
+        .edge = 6,
+    },
+    .ispGainStatic = {
+        .enable = 0,
+        .ispGainR = 0,
+        .ispGainG = 0,
+        .ispGainB = 0,
+    },
+    .colorConvStatic = {
+        .enable = 0,
+        .coeff = { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, }
+    },
+    .AWBAlgo = {
+        .enable = 1,
+        .label = { "JudgeII-A", "JudgeII-TL84", "JudgeII-DAY", },
+        .referenceColorTemp = { 2810, 4015, 6650, },
+        .ispGainR = { 100000000, 125000000, 163000000, },
+        .ispGainG = { 118000000, 100000000, 100000000, },
+        .ispGainB = { 353000000, 229999999, 154000000, },
+        .coeff = {
+            { { 141770000, 20520000, -62280000, }, { -34860000, 160340000, -25480000, }, { -2410000, -117900000, 220299999, }, },
+            { { 159340000, -18510000, -40840000, }, { -31110000, 151640000, -20530000, }, { 540000, -60850000, 160300000, }, },
+            { { 150690000, -11530000, -39160000, }, { -20310000, 160490000, -40180000, }, { 2750000, -63910000, 161160000, }, },
+        },
+        .referenceRGB = {
+            { 65, 46, 16},
+            { 53, 56, 23},
+            { 42, 55, 34},
+        },
+    },
+    .contrast = {
+        .enable = 0,
+        .coeff.LUM_0 = 0,
+        .coeff.LUM_32 = 0,
+        .coeff.LUM_64 = 0,
+        .coeff.LUM_96 = 0,
+        .coeff.LUM_128 = 0,
+        .coeff.LUM_160 = 0,
+        .coeff.LUM_192 = 0,
+        .coeff.LUM_224 = 0,
+        .coeff.LUM_256 = 0,
+    },
+    .statAreaStatic = {
+        .X0 = 160,
+        .Y0 = 140,
+        .XSize = 482,
+        .YSize = 422,
+    },
+    .gamma = {
+        .enable = 1,
+    },
+    .sensorDelay = {
+        .delay = 6,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1090,
+        .HL_Expo1 = 4058,
+        .HL_Lum1 = 33,
+        .HL_Expo2 = 12858,
+        .HL_Lum2 = 103,
+        .LL_LuxRef = 234,
+        .LL_Expo1 = 14784,
+        .LL_Lum1 = 28,
+        .LL_Expo2 = 34062,
+        .LL_Lum2 = 65,
+        .calibFactor = 0.999f,
+    },
+};
+
+/* DCMIPP ISP configuration for VD56G3 sensor */
+static const ISP_IQParamTypeDef ISP_IQParamCacheInit_VD56G3 = {
+    .sensorGainStatic = {
+        .gain = 0,
+    },
+    .sensorExposureStatic = {
+        .exposure = 0,
+    },
+    .AECAlgo = {
+        .enable = 1,
+        .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
+    },
+    .statRemoval = {
+        .enable = 0,
+        .nbHeadLines = 0,
+        .nbValidLines = 0,
+    },
+    .badPixelStatic = {
+        .enable = 0,
+        .strength = 0,
+    },
+    .badPixelAlgo = {
+        .enable = 0,
+        .threshold = 0,
+    },
+    .blackLevelStatic = {
+        .enable = 1,
+        .BLCR = 16,
+        .BLCG = 16,
+        .BLCB = 16,
+    },
+    .demosaicing = {
+        .enable = 0,
+        .type = ISP_DEMOS_TYPE_MONO,
+        .peak = 0,
+        .lineV = 0,
+        .lineH = 0,
+        .edge = 0,
+    },
+    .ispGainStatic = {
+        .enable = 0,
+        .ispGainR = 0,
+        .ispGainG = 0,
+        .ispGainB = 0,
+    },
+    .colorConvStatic = {
+        .enable = 0,
+        .coeff = { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, }
+    },
+    .AWBAlgo = {
+        .enable = 0,
+        .label = { "", "", "", "", "", },
+        .referenceColorTemp = { 0, 0, 0, 0, 0, },
+        .ispGainR = { 0, 0, 0, 0, 0, },
+        .ispGainG = { 0, 0, 0, 0, 0, },
+        .ispGainB = { 0, 0, 0, 0, 0, },
+        .coeff = {
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 0, 0, 0},
+            { 0, 0, 0},
+            { 0, 0, 0},
+            { 0, 0, 0},
+            { 0, 0, 0},
+        },
+    },
+    .contrast = {
+        .enable = 0,
+        .coeff.LUM_0 = 0,
+        .coeff.LUM_32 = 0,
+        .coeff.LUM_64 = 0,
+        .coeff.LUM_96 = 0,
+        .coeff.LUM_128 = 0,
+        .coeff.LUM_160 = 0,
+        .coeff.LUM_192 = 0,
+        .coeff.LUM_224 = 0,
+        .coeff.LUM_256 = 0,
+    },
+    .statAreaStatic = {
+        .X0 = 140,
+        .Y0 = 341,
+        .XSize = 840,
+        .YSize = 682,
+    },
+    .gamma = {
+        .enable = 1,
+    },
+    .sensorDelay = {
+        .delay = 4,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1090,
+        .HL_Expo1 = 425,
+        .HL_Lum1 = 23,
+        .HL_Expo2 = 2025,
+        .HL_Lum2 = 110,
+        .LL_LuxRef = 234,
+        .LL_Expo1 = 2057,
+        .LL_Lum1 = 27,
+        .LL_Expo2 = 5257,
+        .LL_Lum2 = 70,
+        .calibFactor = 0.997f,
+    },
+};
+
+/* DCMIPP ISP configuration for uncalibrated sensor */
+static const ISP_IQParamTypeDef ISP_IQParamCacheInit_UNTUNED = {
+    .sensorGainStatic = {
+        .gain = 0,
+    },
+    .sensorExposureStatic = {
+        .exposure = 0,
+    },
+    .AECAlgo = {
+        .enable = 1,
+        .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
+    },
+    .statRemoval = {
+        .enable = 0,
+        .nbHeadLines = 0,
+        .nbValidLines = 0,
+    },
+    .badPixelStatic = {
+        .enable = 0,
+        .strength = 0,
+    },
+    .badPixelAlgo = {
+        .enable = 0,
+        .threshold = 0,
+    },
+    .blackLevelStatic = {
+        .enable = 0,
+        .BLCR = 0,
+        .BLCG = 0,
+        .BLCB = 0,
+    },
+    .demosaicing = {
+        .enable = 0,
+        .type = ISP_DEMOS_TYPE_RGGB,
+        .peak = 0,
+        .lineV = 0,
+        .lineH = 0,
+        .edge = 0,
+    },
+    .ispGainStatic = {
+        .enable = 0,
+        .ispGainR = 0,
+        .ispGainG = 0,
+        .ispGainB = 0,
+    },
+    .colorConvStatic = {
+        .enable = 0,
+        .coeff = { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, }
+    },
+    .AWBAlgo = {
+        .enable = 0,
+        .label = { "Free Slot", "Free Slot", "Free Slot", "Free Slot", "Free Slot", },
+        .referenceColorTemp = { 0, 0, 0, 0, 0, },
+        .ispGainR = { 0, 0, 0, 0, 0, },
+        .ispGainG = { 0, 0, 0, 0, 0, },
+        .ispGainB = { 0, 0, 0, 0, 0, },
+        .coeff = {
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+            { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
+        },
+    },
+    .contrast = {
+        .enable = 0,
+        .coeff.LUM_0 = 0,
+        .coeff.LUM_32 = 0,
+        .coeff.LUM_64 = 0,
+        .coeff.LUM_96 = 0,
+        .coeff.LUM_128 = 0,
+        .coeff.LUM_160 = 0,
+        .coeff.LUM_192 = 0,
+        .coeff.LUM_224 = 0,
+        .coeff.LUM_256 = 0,
+    },
+    .statAreaStatic = {
+        .X0 = 0,
+        .Y0 = 0,
+        .XSize = ISP_STATWINDOW_MAX,
+        .YSize = ISP_STATWINDOW_MAX,
+    },
+    .gamma = {
+        .enable = 1,
+    },
+    .sensorDelay = {
+        .delay = 5,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1000,
+        .HL_Expo1 = 5000,
+        .HL_Lum1 = 20,
+        .HL_Expo2 = 30000,
+        .HL_Lum2 = 100,
+        .LL_LuxRef = 250,
+        .LL_Expo1 = 10000,
+        .LL_Lum1 = 10,
+        .LL_Expo2 = 30000,
+        .LL_Lum2 = 30,
+        .calibFactor = 1.000f,
+    },
 };
 
 static const ISP_IQParamTypeDef* ISP_IQParamCacheInit[] = {
+    &ISP_IQParamCacheInit_UNTUNED,
     &ISP_IQParamCacheInit_IMX335,
-    &ISP_IQParamCacheInit_VD66GY
+    &ISP_IQParamCacheInit_VD66GY,
+    &ISP_IQParamCacheInit_VD5943,
+    &ISP_IQParamCacheInit_VD1943,
+    &ISP_IQParamCacheInit_VD65G4,
+    &ISP_IQParamCacheInit_VD56G3
 };
 
 #endif /* __ISP_PARAM_CONF__H */

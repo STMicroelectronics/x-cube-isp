@@ -34,9 +34,54 @@ Various template files are provided to easily build an application. They can be 
 # Update history
 
 
+::: {.collapse}
+<input type="checkbox" id="collapse-section4" checked aria-hidden="true">
+<label for="collapse-section4" checked aria-hidden="true">__V1.3.0 / 29-October-2025__</label>
+<div>
+
+## Main Changes
+
+###  Third maintenance release of **CMSIS devices drivers** for **STM32N6xx** series
+
+## Contents
+
+  - Add missing defines in stm32n6xx.h
+  - Fix gcc linker files to ensure that 
+     - Non-Secure Callable (NSC) functions are mapped in NSC area
+     - a ROM area is always defined
+  - Correct REVID_BASE_NS and REVID_BASE_S definitions
+  - Correct DLYB_TypeDef structure definition
+  - Update SystemInit() in system_stm32n6xx_fsbl.c to set compensation cells according to Errata Sheet ES0620
+
+## Development Toolchains and Compilers
+
+- IAR Embedded Workbench for ARM (EWARM) toolchain V9.40.1
+- RealView Microcontroller Development Kit (MDK-ARM) toolchain V5.39
+- STM32CubeIDE 1.18.0
+
+## Known Limitations
+
+- None
+
+## Dependencies
+
+- None
+
+## Notes
+
+- None
+
+
+</div>
+:::
+
+
+
+
+
 
 ::: {.collapse}
-<input type="checkbox" id="collapse-section3" checked aria-hidden="true">
+<input type="checkbox" id="collapse-section3"  aria-hidden="true">
 <label for="collapse-section3" checked aria-hidden="true">__V1.2.0 / 04-June-2025__</label>
 <div>
 

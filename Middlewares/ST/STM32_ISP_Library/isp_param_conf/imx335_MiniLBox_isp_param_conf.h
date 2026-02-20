@@ -32,7 +32,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     .AECAlgo = {
         .enable = 1,
         .exposureCompensation = EXPOSURE_TARGET_0_0_EV,
-        .antiFlickerFreq = 0,
+        .antiFlickerFreq = ANTIFLICKER_NONE,
     },
     .statRemoval = {
         .enable = 0,
@@ -73,7 +73,7 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     },
     .AWBAlgo = {
         .enable = 1,
-        .id = { "MiniLBox A", "MiniLBox TL84", "MiniLBox D65", "Free slot", "Free slot", },
+        .label = { "MiniLBox A", "MiniLBox TL84", "MiniLBox D65", "Free slot", "Free slot", },
         .referenceColorTemp = { 2665, 3750, 6140, 0, 0, },
         .ispGainR = { 126000000, 157000000, 210000000, 0, 0, },
         .ispGainG = { 100000000, 100000000, 100000000, 0, 0, },
@@ -84,6 +84,13 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
             { { 176680000, -60550000, -15590000, }, { -33130000, 138950000, -21970000, }, { -1080000, -40140000, 135020000, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
             { { 0, 0, 0, }, { 0, 0, 0, }, { 0, 0, 0, }, },
+        },
+        .referenceRGB = {
+            { 61, 66, 27 },
+            { 49, 65, 34 },
+            { 39, 66, 42 },
+            { 0, 0, 0 },
+            { 0, 0, 0 },
         },
     },
     .contrast = {
@@ -109,6 +116,19 @@ static const ISP_IQParamTypeDef ISP_IQParamCacheInit_IMX335 = {
     },
     .sensorDelay = {
         .delay = 3,
+    },
+    .luxRef = {
+        .HL_LuxRef = 1050,
+        .HL_Expo1 = 5000,
+        .HL_Lum1 = 20,
+        .HL_Expo2 = 33266,
+        .HL_Lum2 = 117,
+        .LL_LuxRef = 270,
+        .LL_Expo1 = 9000,
+        .LL_Lum1 = 10,
+        .LL_Expo2 = 33266,
+        .LL_Lum2 = 36,
+        .calibFactor = 0.905f,
     },
 };
 
