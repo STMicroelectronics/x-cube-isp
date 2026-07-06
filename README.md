@@ -1,6 +1,6 @@
 # X-CUBE-ISP
 
-![latest tag](https://img.shields.io/badge/tag-2.0.0-blue)
+![latest tag](https://img.shields.io/badge/tag-2.0.2-blue)
 
 The X-CUBE-ISP package provides the functionnality to control and tune the
 DCMIPP ISP present in the STM32N6x products.<br>
@@ -23,6 +23,23 @@ the board.
 ![STM32N6_connection](STM32N6_connection_IQTune_STLink.png)
 
 [Getting started with X-CUBE-ISP Wiki article](https://wiki.st.com/stm32mcu/wiki/ISP:Getting_started_with_X-CUBE-ISP)
+
+## How to use
+
+This repository has been created using the `git submodule` command. Please check the instructions below for proper use. Please check also **the notes at the end of this section** for further information.
+
+1. To **clone** this repository along with the linked submodules, option `--recursive` has to be specified as shown below.
+
+```bash
+git clone --recursive https://github.com/STMicroelectronics/x-cube-isp.git
+```
+
+2. To get the **latest updates**, in case this repository is **already** on your local machine, issue the following **two** commands (with this repository as the **current working directory**).
+
+```bash
+git pull
+git submodule update --init --recursive
+```
 
 ## Table of Contents
 

@@ -80,8 +80,8 @@ void isp_ae_init(ISP_HandleTypeDef *hIsp)
   *         and compensates with gain to still achieve the desired brightness
   * @param  gain             : current sensor gain value (mdB)
   * @param  exposure         : current sensor exposure time value (us)
-  * @param  adjusted_gain    : pointer to the new exposure time value (us)
-  * @param  adjusted_exposure: pointer to the new sensor gain value (mdB)
+  * @param  adjusted_gain    : pointer to the new sensor gain value (mdB)
+  * @param  adjusted_exposure: pointer to the new exposure time value (us)
   * @retval None
   */
 static void isp_ae_compute_antiflcker(uint32_t gain, uint32_t exposure,
@@ -146,7 +146,16 @@ static void isp_ae_reverse_antiflicker(uint32_t gain, uint32_t exposure,
   float compensation_gain;
   uint32_t global_exposure;
 
-  /* Compute adjusted_gain and exposure in any case even if antiflicker is disabled
+  /* In case the exposure time is set to the maximum value, no antiflicker compensation is detected.
+   * Return the same sensor settings */
+  if (exposure == pSensorInfo->exposure_max)
+  {
+    *original_exposure = exposure;
+    *original_gain = gain;
+    return;
+  }
+
+  /* Otherwise, compute adjusted gain and exposure even if antiflicker is disabled
    * This way, in case there is no light condition change, previous adjustment for antiflicker
    * will be removed */
 

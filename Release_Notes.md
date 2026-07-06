@@ -32,7 +32,13 @@ the board.
 
 ## Update history
 
+### V2.0.2 / July 2026
+
+- Changed UVC name (the UVC camera might need to be reinstalled)
+- Minor update
+
 ### V2.0.0 / February 2026
+
 - Update STM32N6 HAL, CMSI and BSP to the version 1.3.0
 - **New 2A algorithms**:
   - The **Auto-Exposure (AE)** algorithm is now based on lux estimation, providing a faster and more stable approach to achieve the luminance target.
@@ -49,6 +55,7 @@ the board.
   - Camera preview is now displayed using UVC live streaming
 
 ### V1.2.0 / July 2025
+
 - Update STM32N6 HAL, CMSI and BSP to the version 1.2.0
 - Support unique Gamma
 - Fix support of MacOS
@@ -56,6 +63,7 @@ the board.
 - Fix build warnings
 
 ### V1.1.0 / July 2025
+
 - Update STM32N6 HAL, CMSI and BSP to the version 1.1.0
 - Add sensor delay feature that can be manually set or automaticaly computed thanks to the STM32-ISP-IQTune desktop application
 - Improve AWB algorithm to avoid flickering between 2 illuminants
@@ -64,9 +72,11 @@ the board.
 - Fix IAR build warnings in the evision libraries
 
 ### V1.0.0 / December 2024
- - Initial release
+
+- Initial release
 
 ## Software components
+
 | Name                         | Version
 |-----                         | -------
 | CMSIS                        | 5.9.0

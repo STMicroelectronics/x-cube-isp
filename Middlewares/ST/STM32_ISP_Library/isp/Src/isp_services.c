@@ -1335,9 +1335,9 @@ ISP_StatusTypeDef ISP_SVC_Misc_GetFirmwareConfig(ISP_FirmwareConfigTypeDef *pCon
   }
   pConfig->deviceId = devId;
   /* UID */
-  pConfig->uId[0] = HAL_GetUIDw2();
+  pConfig->uId[0] = HAL_GetUIDw0();
   pConfig->uId[1] = HAL_GetUIDw1();
-  pConfig->uId[2] = HAL_GetUIDw0();
+  pConfig->uId[2] = HAL_GetUIDw2();
   /* Sensor Delay support status */
   pConfig->hasSensorDelay = 1;
   /* UVC streaming support */
