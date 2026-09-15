@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "cmw_io.h"
+#include "cmw_utils.h"
 
 #define VD56G3_REG_MODEL_ID                 0x0000U
 #define VD56G3_CHIP_ID                      0x5603U
@@ -235,6 +236,7 @@ static VD6G_MirrorFlip_t CMW_VD56G3_GetMirrorFlipConfig(uint32_t config)
 
 static int32_t CMW_VD56G3_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   VD6G_Config_t config = { 0 };
   CMW_VD56G3_config_t *sensor_config;
   int ret;
@@ -246,12 +248,9 @@ static int32_t CMW_VD56G3_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
   }
 
   sensor_config = (CMW_VD56G3_config_t *)(initSensor->sensor_config);
-  if (sensor_config == NULL)
-  {
-    return CMW_ERROR_WRONG_PARAM;
-  }
+  assert(sensor_config != NULL);
 
-  if (((CMW_VD56G3_t *)io_ctx)->IsInitialized)
+  if (vd56g3_ctx->IsInitialized)
   {
     return CMW_ERROR_NONE;
   }
@@ -298,36 +297,38 @@ static int32_t CMW_VD56G3_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
     config.gpio_ctrl[i] = VD6G_GPIO_GPIO_IN;
   }
 
-  ret = VD6G_Init(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, &config);
+  ret = VD6G_Init(&vd56g3_ctx->ctx_driver, &config);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  if (((CMW_VD56G3_t *)io_ctx)->ctx_driver.bayer != VD6G_BAYER_NONE)
+  if (vd56g3_ctx->ctx_driver.bayer != VD6G_BAYER_NONE)
   {
-    VD6G_DeInit(&((CMW_VD56G3_t *)io_ctx)->ctx_driver);
+    VD6G_DeInit(&vd56g3_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ((CMW_VD56G3_t *)io_ctx)->IsInitialized = 1;
+  vd56g3_ctx->IsInitialized = 1;
+
   return CMW_ERROR_NONE;
 }
 
-void CMW_VD56G3_SetDefaultSensorValues(CMW_VD56G3_config_t *vd56g3_config)
+void CMW_VD56G3_SetDefaultSensorValues(void *sensor_config)
 {
-  assert(vd56g3_config != NULL);
+  assert(sensor_config != NULL);
+  CMW_VD56G3_config_t *vd56g3_config = (CMW_VD56G3_config_t *)sensor_config;
   vd56g3_config->line_len = 0;
   vd56g3_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
 }
 
 static int32_t CMW_VD56G3_Start(void *io_ctx)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   int ret;
-
-  ret = VD6G_Start(&((CMW_VD56G3_t *)io_ctx)->ctx_driver);
+  ret = VD6G_Start(&vd56g3_ctx->ctx_driver);
   if (ret) {
-    VD6G_DeInit(&((CMW_VD56G3_t *)io_ctx)->ctx_driver);
+    VD6G_DeInit(&vd56g3_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
@@ -336,9 +337,10 @@ static int32_t CMW_VD56G3_Start(void *io_ctx)
 
 static int32_t CMW_VD56G3_Stop(void *io_ctx)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   int ret;
 
-  ret = VD6G_Stop(&((CMW_VD56G3_t *)io_ctx)->ctx_driver);
+  ret = VD6G_Stop(&vd56g3_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
@@ -349,29 +351,26 @@ static int32_t CMW_VD56G3_Stop(void *io_ctx)
 
 static int32_t CMW_VD56G3_DeInit(void *io_ctx)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   int ret;
 
-  ret = VD6G_Stop(&((CMW_VD56G3_t *)io_ctx)->ctx_driver);
+  ret = VD6G_DeInit(&vd56g3_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ret = VD6G_DeInit(&((CMW_VD56G3_t *)io_ctx)->ctx_driver);
-  if (ret)
-  {
-    return CMW_ERROR_PERIPH_FAILURE;
-  }
+  vd56g3_ctx->IsInitialized = 0U;
 
-  ((CMW_VD56G3_t *)io_ctx)->IsInitialized = 0U;
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD56G3_MirrorFlipConfig(void *io_ctx, uint32_t config)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   int32_t ret;
 
-  ret = VD6G_SetFlipMirrorMode(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, CMW_VD56G3_GetMirrorFlipConfig(config));
+  ret = VD6G_SetFlipMirrorMode(&vd56g3_ctx->ctx_driver, CMW_VD56G3_GetMirrorFlipConfig(config));
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
@@ -382,6 +381,7 @@ static int32_t CMW_VD56G3_MirrorFlipConfig(void *io_ctx, uint32_t config)
 
 static int32_t CMW_VD56G3_SetGain(void *io_ctx, int32_t gain_mdB)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   int32_t ret;
   uint8_t again_regmin, again_regmax;
   uint16_t dgain_regmin, dgain_regmax;
@@ -389,11 +389,11 @@ static int32_t CMW_VD56G3_SetGain(void *io_ctx, int32_t gain_mdB)
   uint32_t dgain_min_mdB, dgain_max_mdB;
   double analog_linear_gain, digital_linear_gain;
 
-  ret = VD6G_GetAnalogGainRegRange(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, &again_regmin, &again_regmax);
+  ret = VD6G_GetAnalogGainRegRange(&vd56g3_ctx->ctx_driver, &again_regmin, &again_regmax);
   if (ret)
     return ret;
 
-  ret = VD6G_GetDigitalGainRegRange(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, &dgain_regmin, &dgain_regmax);
+  ret = VD6G_GetDigitalGainRegRange(&vd56g3_ctx->ctx_driver, &dgain_regmin, &dgain_regmax);
   if (ret)
     return ret;
 
@@ -419,11 +419,11 @@ static int32_t CMW_VD56G3_SetGain(void *io_ctx, int32_t gain_mdB)
     digital_linear_gain = MDECIBEL_TO_LINEAR((double)(gain_mdB - again_max_mdB));
   }
 
-  ret = VD6G_SetAnalogGain(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, (int)(32.0 - (32.0 / analog_linear_gain)));
+  ret = VD6G_SetAnalogGain(&vd56g3_ctx->ctx_driver, (int)(32.0 - (32.0 / analog_linear_gain)));
   if (ret)
     return ret;
 
-  ret = VD6G_SetDigitalGain(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, FLOAT_TO_FP58(digital_linear_gain));
+  ret = VD6G_SetDigitalGain(&vd56g3_ctx->ctx_driver, FLOAT_TO_FP58(digital_linear_gain));
   if (ret)
     return ret;
 
@@ -432,31 +432,35 @@ static int32_t CMW_VD56G3_SetGain(void *io_ctx, int32_t gain_mdB)
 
 static int32_t CMW_VD56G3_SetExposure(void *io_ctx, int32_t exposure)
 {
-  return VD6G_SetExposureTime(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, exposure);
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
+
+  return VD6G_SetExposureTime(&vd56g3_ctx->ctx_driver, exposure);
 }
 
 static int32_t CMW_VD56G3_SetExposureMode(void *io_ctx, int32_t mode)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   int ret = -1;
   switch (mode)
   {
     case CMW_EXPOSUREMODE_MANUAL:
-      ret = VD6G_SetExposureMode(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, VD6G_EXPOSURE_MANUAL);
+      ret = VD6G_SetExposureMode(&vd56g3_ctx->ctx_driver, VD6G_EXPOSURE_MANUAL);
       break;
     case CMW_EXPOSUREMODE_AUTOFREEZE:
-      ret = VD6G_SetExposureMode(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, VD6G_EXPOSURE_FREEZE_AEALGO);
+      ret = VD6G_SetExposureMode(&vd56g3_ctx->ctx_driver, VD6G_EXPOSURE_FREEZE_AEALGO);
       break;
     case CMW_EXPOSUREMODE_AUTO:
     default:
-      ret = VD6G_SetExposureMode(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, VD6G_EXPOSURE_AUTO);
+      ret = VD6G_SetExposureMode(&vd56g3_ctx->ctx_driver, VD6G_EXPOSURE_AUTO);
       break;
   }
 
   return (ret == 0) ? CMW_ERROR_NONE : CMW_ERROR_UNKNOWN_FAILURE;
 }
 
-static int32_t CMW_VD56G3_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
+static int32_t CMW_VD56G3_GetSensorInfo(void *io_ctx, CMW_Sensor_Info_t *info)
 {
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
   uint8_t again_regmin, again_regmax;
   uint16_t dgain_regmin, dgain_regmax;
   int ret;
@@ -474,17 +478,17 @@ static int32_t CMW_VD56G3_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
   }
 
   /* Monochrome variant */
-  info->bayer_pattern = ISP_DEMOS_TYPE_MONO;
+  info->bayer_pattern = CMW_BAYER_PATTERN_MONO;
   info->width = VD6G_MAX_WIDTH;
   info->height = VD6G_MAX_HEIGHT;
   /* Pixel depth derives from the current driver configuration */
-  info->color_depth = ((CMW_VD56G3_t *)io_ctx)->ctx_driver.ctx.config_save.pixel_depth;
+  info->color_depth = vd56g3_ctx->ctx_driver.ctx.config_save.pixel_depth;
 
-  ret = VD6G_GetAnalogGainRegRange(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, &again_regmin, &again_regmax);
+  ret = VD6G_GetAnalogGainRegRange(&vd56g3_ctx->ctx_driver, &again_regmin, &again_regmax);
   if (ret)
     return ret;
 
-  ret = VD6G_GetDigitalGainRegRange(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, &dgain_regmin, &dgain_regmax);
+  ret = VD6G_GetDigitalGainRegRange(&vd56g3_ctx->ctx_driver, &dgain_regmin, &dgain_regmax);
   if (ret)
     return ret;
 
@@ -497,16 +501,22 @@ static int32_t CMW_VD56G3_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
   info->gain_max = again_max_mdB + dgain_max_mdB;
   info->again_max = again_max_mdB;
 
-  ret = VD6G_GetExposureRegRange(&((CMW_VD56G3_t *)io_ctx)->ctx_driver, &info->exposure_min, &info->exposure_max);
+  ret = VD6G_GetExposureRegRange(&vd56g3_ctx->ctx_driver, &info->exposure_min, &info->exposure_max);
   if (ret)
     return ret;
 
   return CMW_ERROR_NONE;
 }
 
+static int32_t CMW_VD56G3_GetIspDecimationRatio(void *io_ctx, int32_t *ratio_h, int32_t *ratio_v)
+{
+  return CMW_UTILS_GetIspDecimationRatio_NoIsp(ratio_h, ratio_v);
+}
+
 static int32_t CMW_VD56G3_SetTestPattern(void *io_ctx, int32_t mode)
 {
-  VD6G_Config_t *cfg = &((CMW_VD56G3_t *)io_ctx)->ctx_driver.ctx.config_save;
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)io_ctx;
+  VD6G_Config_t *cfg = &vd56g3_ctx->ctx_driver.ctx.config_save;
 
   if (mode < VD6G_PATGEN_DISABLE || mode > VD6G_PATGEN_PSEUDO_RANDOM)
   {
@@ -514,6 +524,7 @@ static int32_t CMW_VD56G3_SetTestPattern(void *io_ctx, int32_t mode)
   }
 
   cfg->patgen = mode; /* Stored but driver might need a re-init to apply */
+
   return CMW_ERROR_NONE;
 }
 
@@ -556,7 +567,7 @@ static void CMW_VD56G3_PowerOn(CMW_VD56G3_t *io_ctx)
   io_ctx->Delay(20U);
 }
 
-int CMW_VD56G3_Probe(CMW_VD56G3_t *io_ctx, CMW_Sensor_if_t *vd56g3_if)
+static int CMW_VD56G3_Probe(CMW_VD56G3_t *io_ctx, CMW_Sensor_if_t *vd56g3_if)
 {
   int ret;
   uint32_t id;
@@ -597,7 +608,6 @@ int CMW_VD56G3_Probe(CMW_VD56G3_t *io_ctx, CMW_Sensor_if_t *vd56g3_if)
   }
 
   memset(vd56g3_if, 0, sizeof(*vd56g3_if));
-  vd56g3_if->Init = CMW_VD56G3_Init;
   vd56g3_if->DeInit = CMW_VD56G3_DeInit;
   vd56g3_if->Start = CMW_VD56G3_Start;
   vd56g3_if->Stop = CMW_VD56G3_Stop;
@@ -607,6 +617,112 @@ int CMW_VD56G3_Probe(CMW_VD56G3_t *io_ctx, CMW_Sensor_if_t *vd56g3_if)
   vd56g3_if->SetExposureMode = CMW_VD56G3_SetExposureMode;
   vd56g3_if->SetTestPattern = CMW_VD56G3_SetTestPattern;
   vd56g3_if->GetSensorInfo = CMW_VD56G3_GetSensorInfo;
+  vd56g3_if->GetIspDecimationRatio = CMW_VD56G3_GetIspDecimationRatio;
+
+  return CMW_ERROR_NONE;
+}
+
+static void CMW_VD56G3_ShutdownPin(int value)
+{
+  HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void CMW_VD56G3_EnablePin(int value)
+{
+  HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+int32_t CMW_CAMERA_VD56G3_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                              CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP)
+{
+  int32_t ret = CMW_ERROR_NONE;
+  DCMIPP_CSI_ConfTypeDef csi_conf = { 0 };
+  DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe_conf = { 0 };
+  uint32_t dt_format = 0;
+  uint32_t dt = 0;
+  CMW_VD56G3_config_t default_sensor_config;
+  CMW_VD56G3_config_t *sensor_config;
+  CMW_VD56G3_t *vd56g3_ctx = (CMW_VD56G3_t *)sensor_ctx;
+
+  memset(vd56g3_ctx, 0, sizeof(*vd56g3_ctx));
+  vd56g3_ctx->Address     = CAMERA_VD56G3_ADDRESS;
+  vd56g3_ctx->Init        = CMW_I2C_INIT;
+  vd56g3_ctx->DeInit      = CMW_I2C_DEINIT;
+  vd56g3_ctx->ReadReg     = CMW_I2C_READREG16;
+  vd56g3_ctx->WriteReg    = CMW_I2C_WRITEREG16;
+  vd56g3_ctx->Delay       = HAL_Delay;
+  vd56g3_ctx->ShutdownPin = CMW_VD56G3_ShutdownPin;
+  vd56g3_ctx->EnablePin   = CMW_VD56G3_EnablePin;
+
+  ret = CMW_VD56G3_Probe(vd56g3_ctx, camera_drv);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  /* Special case: when resolution is not specified take the full sensor resolution */
+  if ((initSensors_params->width == 0) || (initSensors_params->height == 0))
+  {
+    initSensors_params->width = VD6G_MAX_WIDTH;
+    initSensors_params->height = VD6G_MAX_HEIGHT;
+  }
+
+  CMW_VD56G3_SetDefaultSensorValues(&default_sensor_config);
+  initSensors_params->sensor_config = initSensors_params->sensor_config ? initSensors_params->sensor_config : &default_sensor_config;
+  sensor_config = (CMW_VD56G3_config_t*) (initSensors_params->sensor_config);
+
+  csi_conf.NumberOfLanes = DCMIPP_CSI_TWO_DATA_LANES;
+  csi_conf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
+  csi_conf.PHYBitrate = DCMIPP_CSI_PHY_BT_800;
+  ret = HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csi_conf);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  switch (sensor_config->pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_RAW8:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP8;
+      dt = DCMIPP_DT_RAW8;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW10:
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP10;
+      dt = DCMIPP_DT_RAW10;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = HAL_DCMIPP_CSI_SetVCConfig(hdcmipp, DCMIPP_VIRTUAL_CHANNEL0, dt_format);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  csi_pipe_conf.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+  csi_pipe_conf.DataTypeIDA = dt;
+  csi_pipe_conf.DataTypeIDB = 0;
+  /* Pre-initialize CSI config for all the pipes */
+  for (uint32_t i = DCMIPP_PIPE0; i <= DCMIPP_PIPE2; i++)
+  {
+    ret = HAL_DCMIPP_CSI_PIPE_SetConfig(hdcmipp, i, &csi_pipe_conf);
+    if (ret != HAL_OK)
+    {
+      return CMW_ERROR_PERIPH_FAILURE;
+    }
+  }
+
+  ret = CMW_VD56G3_Init(vd56g3_ctx, initSensors_params);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
 
   return CMW_ERROR_NONE;
 }

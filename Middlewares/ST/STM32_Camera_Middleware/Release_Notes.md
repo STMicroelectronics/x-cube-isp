@@ -12,24 +12,30 @@ This middleware simplifies the development process for applications that require
 - Support for the following cameras:
   - MB1854B IMX335 Camera module
   - ST VD66GY Camera module
+  - ST VD56G3 Camera module
   - ST VD55G1 Camera module
-  - ST STEVAL-1943-MC1 Camera module
+  - ST VD65G4 Camera module
+  - ST STEVAL-1943-MC1 (VD1943) Camera module
+  - ST VD5943 Camera module
   - OV5640 Camera module
+  - Raspberry Pi High Quality Camera (IMX477)
 - Use ISP Library for ST VD66GY.
 - Use ISP Library for IMX335.
 - Use ISP Library for ST VD1943.
+- Support 'CMW_USE_WITHOUT_ISP' configuration to run sensors without the ISP Library.
 - Enable APIs to Init and Start camera pipelines with CSI-DCMIPP.
 
 ## Software components
 
 | Name           | Version                  | Release notes
 |-----           | -------                  | -------------
-| Isp Library    | v1.3.0                   | [release notes](ISP_Library/README.md)
+| Isp Library    | v2.1.0                   | [release notes](ISP_Library/README.md)
 | imx335 driver  | v1.3.2-cmw-patch         | [release notes](sensors/imx335/Release_Notes.html)
 | ov5640 driver  | v4.0.2-cmw-patch-2       | [release notes](sensors/ov5640/Release_Notes.html)
-| vd6g driver    | v1.0.0                   |
+| vd6g driver    | v1.1.0                   |
 | vd55g1 driver  | v1.1.0                   |
-| vd1943 driver  | v1.0.0                   |
+| vd1943 driver  | v1.0.1                   |
+| imx477 driver  | v1.0.0                   |
 
 ## Supported Devices and Boards
 
@@ -37,6 +43,18 @@ This middleware simplifies the development process for applications that require
 - MB1939 STM32N6570-DK revC
 
 ## Update history
+
+### V2.0.0 / September 2026
+
+- Update Isp library to v2.1.0
+- API break: rename camera APIs to CMW_CAMERA_Init/Start/Stop/DeInit and integrate ISP init/de-init
+- Add CMW_CAMERA_DeInit() and prevent double initialization
+- Introduce 'CMW_USE_WITHOUT_ISP' camera configuration
+- Add advanced configuration for VD1943 rolling shutter and global shutter
+- Rework white balance APIs
+- Use CMW types and enums instead of ISP types (CMW bayer pattern definition)
+- Add support of Raspberry Pi Official HQ Camera - IMX477
+- Add documentation to integrate a new sensor
 
 ### V1.5.1 / February 2025
 

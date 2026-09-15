@@ -933,6 +933,7 @@ static int VD1943_SetupLineLen(VD1943_Ctx_t *ctx)
   uint32_t mipi_interpacket_delay_in_px;
   uint64_t mipi_virtual_linelength = 0;
   int ret;
+  int line_length_offset = 0;
 
   /* Shutter mode directly impact linelength */
   switch (ctx->ctx.config_save.image_processing_mode)
@@ -961,11 +962,14 @@ static int VD1943_SetupLineLen(VD1943_Ctx_t *ctx)
   case VD1943_RS_SDR_RGB_8:
   case VD1943_RS_SDR_RGB_10:
   case VD1943_RS_SDR_RGB_12:
+    gs_mode = 0;
+    break;
   case VD1943_RS_HDR_NATIVE_10:
   case VD1943_RS_HDR_NATIVE_12:
   case VD1943_RS_HDR_RGB_10:
   case VD1943_RS_HDR_RGB_12:
     gs_mode = 0;
+    line_length_offset = 10;
     break;
   default:
     return -1;
@@ -1010,7 +1014,7 @@ static int VD1943_SetupLineLen(VD1943_Ctx_t *ctx)
   line_length = MAX(VD1943_LINE_LENGTH_MIN, (uint16_t)mipi_virtual_linelength);
 
   /* Ensure linelength is a multiple of 4 */
-  line_length = ((line_length + 3) / 4) * 4;
+  line_length = ((((line_length + 3) / 4) + line_length_offset) * 4);
 
   VD1943_dbg(ctx, 0, "line_length = %d\n", line_length);
 

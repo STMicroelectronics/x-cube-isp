@@ -127,5 +127,6 @@ ISP_StatusTypeDef ISP_SVC_Stats_ProcessCallbacks(ISP_HandleTypeDef *hIsp);
 ISP_StatusTypeDef ISP_SVC_Stats_EvaluateUp(ISP_HandleTypeDef *hIsp, ISP_StatisticsTypeDef *pDownStats, ISP_StatisticsTypeDef *pUpStats);
 void ISP_SVC_Stats_Gather(ISP_HandleTypeDef *hIsp);
 uint8_t ISP_SVC_Stats_WeightedAverageL(const ISP_ExternalStatsTypeDef *extStats);
+int32_t ISP_SVC_Start_ToolCom(void);
 
 #endif /* __ISP_SERVICES__H */

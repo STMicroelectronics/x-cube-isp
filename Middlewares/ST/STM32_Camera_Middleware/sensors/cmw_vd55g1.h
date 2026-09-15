@@ -23,12 +23,14 @@
 #endif
 
 #include <stdint.h>
+#include "cmw_camera.h"
 #include "cmw_sensors_if.h"
 #include "cmw_errno.h"
 #include "vd55g1.h"
-#include "cmw_camera.h"
 
-#define VD55G1_NAME    "VD55G1"
+#define VD55G1_NAME              "VD55G1"
+#define CAMERA_VD55G1_ADDRESS    0x20U
+#define CAMERA_VD55G1_FREQ_IN_HZ 12000000U
 
 typedef struct
 {
@@ -45,8 +47,15 @@ typedef struct
   void (*EnablePin)(int value);
 } CMW_VD55G1_t;
 
-int CMW_VD55G1_Probe(CMW_VD55G1_t *io_ctx, CMW_Sensor_if_t *vd55g1_if);
-void CMW_VD55G1_SetDefaultSensorValues(CMW_VD55G1_config_t *vd55g1_config);
+typedef struct
+{
+  CMW_PixelFormat_t pixel_format; /*!< This parameter can be a value from @ref CMW_PIXEL_FORMAT */
+  uint32_t CSI_PHYBitrate;
+} CMW_VD55G1_config_t;
+
+int32_t CMW_CAMERA_VD55G1_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                               CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP);
+void CMW_VD55G1_SetDefaultSensorValues(void *sensor_config);
 
 
 #ifdef __cplusplus

@@ -23,11 +23,14 @@
 #endif
 
 #include <stdint.h>
+#include "cmw_camera.h"
+#include "cmw_sensors_if.h"
 #include "cmw_errno.h"
 #include "vd6g.h"
-#include "cmw_camera.h"
 
-#define VD56G3_NAME    "VD56G3"
+#define VD56G3_NAME              "VD56G3"
+#define CAMERA_VD56G3_ADDRESS    0x20U
+#define CAMERA_VD56G3_FREQ_IN_HZ 12000000U
 
 typedef struct
 {
@@ -44,8 +47,15 @@ typedef struct
   void (*EnablePin)(int value);
 } CMW_VD56G3_t;
 
-int CMW_VD56G3_Probe(CMW_VD56G3_t *io_ctx, CMW_Sensor_if_t *vd56g3_if);
-void CMW_VD56G3_SetDefaultSensorValues(CMW_VD56G3_config_t *vd56g3_config);
+typedef struct
+{
+  CMW_PixelFormat_t pixel_format;  /*!< This parameter can be a value from @ref CMW_PIXEL_FORMAT */
+  int line_len;
+} CMW_VD56G3_config_t;
+
+int32_t CMW_CAMERA_VD56G3_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                               CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP);
+void CMW_VD56G3_SetDefaultSensorValues(void *sensor_config);
 
 #ifdef __cplusplus
 }

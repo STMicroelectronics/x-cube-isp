@@ -23,8 +23,10 @@
 #include <stddef.h>
 #include <string.h>
 #include "cmw_camera.h"
+#include "cmw_io.h"
+#include "cmw_utils.h"
 #include "vd1943.h"
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
 #include "isp_param_conf.h"
 #endif
 
@@ -40,6 +42,323 @@
 #define LINEAR_TO_MDECIBEL(linearValue) (1000 * (20.0 * log10(linearValue)))
 #define FLOAT_TO_FP58(x) (((uint16_t)(x) << 8) | ((uint16_t)((x - (uint16_t)(x)) * 256.0f) & 0xFF))
 #define FP58_TO_FLOAT(fp) (((fp) >> 8) + ((fp) & 0xFF) / 256.0f)
+
+static int CMW_VD1943_GetRegMode(cmw_vd1943_stream_mode_config_t *sensor_stream_mode, VD1943_MODE_t *mode_reg_value, CMW_PixelFormat_t *pixel_format)
+{
+  if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+      sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+      sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+      sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+      sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+      sensor_stream_mode->upscaling == false &&
+      sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS1_NATIVE_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS1_NATIVE_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == true)
+  {
+    *mode_reg_value = VD1943_GS_SS1_SPLIT_NATIVE_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == true)
+  {
+    *mode_reg_value = VD1943_GS_SS1_SPLIT_NATIVE_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS1_RGB_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS1_RGB_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_2x2 &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS2_MONO_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_2x2 &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS2_MONO_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_4x4 &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS4_MONO_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_4x4 &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS4_MONO_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_32x32 &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS32_MONO_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_32x32 &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS32_MONO_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == true &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS1_IR_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == true &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_GS_SS1_IR_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == true &&
+           sensor_stream_mode->split_exposure == true)
+  {
+    *mode_reg_value = VD1943_GS_SS1_SPLIT_IR_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_GLOBAL_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_IR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == true &&
+           sensor_stream_mode->split_exposure == true)
+  {
+    *mode_reg_value = VD1943_GS_SS1_SPLIT_IR_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_SDR_NATIVE_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_SDR_NATIVE_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_12 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_SDR_NATIVE_12;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW12;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_8 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_SDR_RGB_8;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW8;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_SDR_RGB_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_12 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_SDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_SDR_RGB_12;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW12;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_HDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_HDR_NATIVE_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_12 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_RGBNIR &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_HDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_HDR_NATIVE_12;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW12;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_10 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_HDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_HDR_RGB_10;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW10;
+    return CMW_ERROR_NONE;
+  }
+  else if (sensor_stream_mode->shutter_type == CMW_VD1943_ROLLING_SHUTTER &&
+           sensor_stream_mode->pixel_depth == CMW_VD1943_SENSOR_PIXEL_DEPTH_12 &&
+           sensor_stream_mode->pixel_pattern == CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG &&
+           sensor_stream_mode->subsampling == CMW_VD1943_SENSOR_SUBSAMPLING_OFF &&
+           sensor_stream_mode->dynamic_range == CMW_VD1943_DYNAMIC_RANGE_HDR &&
+           sensor_stream_mode->upscaling == false &&
+           sensor_stream_mode->split_exposure == false)
+  {
+    *mode_reg_value = VD1943_RS_HDR_RGB_12;
+    *pixel_format = CMW_PIXEL_FORMAT_RAW12;
+    return CMW_ERROR_NONE;
+  }
+  return CMW_ERROR_WRONG_PARAM;
+}
 
 static VD1943_MirrorFlip_t CMW_VD1943_getMirrorFlipConfig(uint32_t Config)
 {
@@ -205,8 +524,9 @@ static void VD1943_Log(struct VD1943_Ctx *ctx, int lvl, const char *format, va_l
  * @param  Gain Gain in mdB
  * @retval Component status
  */
-int32_t CMW_VD1943_SetGain(void *io_ctx, int32_t gain)
+static int32_t CMW_VD1943_SetGain(void *io_ctx, int32_t gain)
 {
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   int32_t ret;
   uint32_t again_min_mdB, again_max_mdB;
   uint32_t dgain_min_mdB, dgain_max_mdB;
@@ -240,11 +560,11 @@ int32_t CMW_VD1943_SetGain(void *io_ctx, int32_t gain)
     digital_linear_gain = MDECIBEL_TO_LINEAR((double)(gain - again_max_mdB));
   }
 
-  ret = VD1943_SetAnalogGain(&((CMW_VD1943_t *)io_ctx)->ctx_driver, again_reg);
+  ret = VD1943_SetAnalogGain(&vd1943_ctx->ctx_driver, again_reg);
   if (ret)
     return ret;
 
-  ret = VD1943_SetDigitalGain(&((CMW_VD1943_t *)io_ctx)->ctx_driver,
+  ret = VD1943_SetDigitalGain(&vd1943_ctx->ctx_driver,
                               FLOAT_TO_FP58(digital_linear_gain));
   if (ret)
     return ret;
@@ -258,9 +578,11 @@ int32_t CMW_VD1943_SetGain(void *io_ctx, int32_t gain)
  * @param  Exposure Exposure in micro seconds
  * @retval Component status
  */
-int32_t CMW_VD1943_SetExposure(void *io_ctx, int32_t exposure)
+static int32_t CMW_VD1943_SetExposure(void *io_ctx, int32_t exposure)
 {
-  return VD1943_SetExpo(&((CMW_VD1943_t *)io_ctx)->ctx_driver, exposure);
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
+
+  return VD1943_SetExpo(&vd1943_ctx->ctx_driver, exposure);
 }
 
 /**
@@ -270,38 +592,63 @@ int32_t CMW_VD1943_SetExposure(void *io_ctx, int32_t exposure)
   * @param  RefColorTemp color temperature if automatic mode is disabled
   * @retval Component status
   */
-int32_t CMW_VD1943_SetWBRefMode(void *io_ctx, uint8_t Automatic, uint32_t RefColorTemp)
+static int32_t CMW_VD1943_SetWBRefMode(void *io_ctx, uint8_t Automatic, uint32_t RefColorTemp)
 {
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = ISP_SetWBRefMode(&((CMW_VD1943_t *)io_ctx)->hIsp, Automatic, RefColorTemp);
+  ret = ISP_SetWBRefMode(&vd1943_ctx->hIsp, Automatic, RefColorTemp);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
   return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
 }
 
 /**
   * @brief  List the sensor white balance modes
   * @param  io_ctx  pointer to component object
   * @param  RefColorTemp color temperature list
+  * @param  array_size number of entries available in RefColorTemp
   * @retval Component status
   */
-int32_t CMW_VD1943_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[])
+static int32_t CMW_VD1943_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[], uint32_t array_size)
 {
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = ISP_ListWBRefModes(&((CMW_VD1943_t *)io_ctx)->hIsp, RefColorTemp);
+  assert(array_size >= CMW_CAMERA_NB_WB_REF_MODES);
+
+  ret = ISP_ListWBRefModes(&vd1943_ctx->hIsp, RefColorTemp);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
   return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
 }
 
+static int32_t CMW_VD1943_GetIspDecimationRatio(void *io_ctx, int32_t *ratio_h, int32_t *ratio_v)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD1943_t *ctx = (CMW_VD1943_t *) io_ctx;
+
+  return CMW_UTILS_GetIspDecimationRatio_WithIsp(&ctx->hIsp, ratio_h, ratio_v);
+#else
+  return CMW_UTILS_GetIspDecimationRatio_NoIsp(ratio_h, ratio_v);
+#endif
+}
 
 /**
   * @brief  Get the sensor info
@@ -309,8 +656,9 @@ int32_t CMW_VD1943_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[])
   * @param  pInfo pointer to sensor info structure
   * @retval Component status
   */
-static int32_t CMW_VD1943_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
+static int32_t CMW_VD1943_GetSensorInfo(void *io_ctx, CMW_Sensor_Info_t *info)
 {
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   uint32_t again_min_mdB, again_max_mdB;
   uint32_t dgain_min_mdB, dgain_max_mdB;
   int ret;
@@ -328,11 +676,39 @@ static int32_t CMW_VD1943_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
     return CMW_ERROR_WRONG_PARAM;
   }
 
-  /* Get isp bayer pattern info */
-  info->bayer_pattern = ((CMW_VD1943_t *)io_ctx)->ctx_driver.bayer - 1;
+  /* Get bayer pattern info */
+  switch (vd1943_ctx->ctx_driver.bayer)
+  {
+    case VD1943_BAYER_RGGB:
+      info->bayer_pattern = CMW_BAYER_PATTERN_RGGB;
+      break;
+    case VD1943_BAYER_GRBG:
+      info->bayer_pattern = CMW_BAYER_PATTERN_GRBG;
+      break;
+    case VD1943_BAYER_GBRG:
+      info->bayer_pattern = CMW_BAYER_PATTERN_GBRG;
+      break;
+    case VD1943_BAYER_BGGR:
+      info->bayer_pattern = CMW_BAYER_PATTERN_BGGR;
+      break;
+    case VD1943_BAYER_RGBNIR:
+      info->bayer_pattern = CMW_BAYER_PATTERN_RGBNIR;
+      break;
+    case VD1943_BAYER_RGBNIR_MIRROR:
+      info->bayer_pattern = CMW_BAYER_PATTERN_RGBNIR_MIRROR;
+      break;
+    case VD1943_BAYER_RGBNIR_FLIP:
+      info->bayer_pattern = CMW_BAYER_PATTERN_RGBNIR_FLIP;
+      break;
+    case VD1943_BAYER_RGBNIR_FLIP_MIRROR:
+      info->bayer_pattern = CMW_BAYER_PATTERN_RGBNIR_FLIP_MIRROR;
+      break;
+    default:
+      return CMW_ERROR_WRONG_PARAM;
+  }
 
   /* Get color depth */
-  ret = VD1943_GetPixelDepth(&((CMW_VD1943_t *)io_ctx)->ctx_driver,
+  ret = VD1943_GetPixelDepth(&vd1943_ctx->ctx_driver,
                              (unsigned int *)&info->color_depth);
   if (ret)
     return ret;
@@ -352,7 +728,7 @@ static int32_t CMW_VD1943_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
   info->again_max = again_max_mdB;
 
   /* Get exposure range */
-  ret = VD1943_GetExposureRange(&((CMW_VD1943_t *)io_ctx)->ctx_driver,
+  ret = VD1943_GetExposureRange(&vd1943_ctx->ctx_driver,
                                 (unsigned int *)&info->exposure_min,
                                 (unsigned int *)&info->exposure_max);
   if (ret)
@@ -391,24 +767,22 @@ static int CMW_VD1943_GetResType(uint32_t width, uint32_t height, VD1943_Res_t *
   {
     return CMW_ERROR_WRONG_PARAM;
   }
+
   return 0;
 }
 
-
-static int32_t CMW_VD1943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
+static int32_t CMW_VD1943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor, void *p_appliHelpers_ISP)
 {
+  CMW_VD1943_config_t *sensor_config = (CMW_VD1943_config_t*)(initSensor->sensor_config);
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
+  CMW_PixelFormat_t pixel_format;
   VD1943_Config_t config = { 0 };
+  VD1943_MODE_t mode;
   int ret;
   int i;
-  VD1943_MODE_t mode;
-  CMW_VD1943_config_t *sensor_config;
-  sensor_config = (CMW_VD1943_config_t*)(initSensor->sensor_config);
-  if (sensor_config == NULL)
-  {
-    return CMW_ERROR_WRONG_PARAM;
-  }
 
-  if (((CMW_VD1943_t *)io_ctx)->IsInitialized)
+  assert(sensor_config != NULL);
+  if (vd1943_ctx->IsInitialized)
   {
     return CMW_ERROR_NONE;
   }
@@ -420,27 +794,11 @@ static int32_t CMW_VD1943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
     return CMW_ERROR_COMPONENT_FAILURE;
   }
 
-  switch (sensor_config->pixel_format)
+  ret = CMW_VD1943_GetRegMode(&sensor_config->sensor_stream_mode, &mode, &pixel_format);
+  (void)pixel_format;
+  if (ret != CMW_ERROR_NONE)
   {
-    case CMW_PIXEL_FORMAT_RAW8:
-    {
-      mode = VD1943_RS_SDR_RGB_8;
-      break;
-    }
-    case CMW_PIXEL_FORMAT_RAW10:
-    {
-      mode = VD1943_RS_SDR_RGB_10;
-      break;
-    }
-    case CMW_PIXEL_FORMAT_DEFAULT:
-    case CMW_PIXEL_FORMAT_RAW12:
-    {
-      mode = VD1943_RS_SDR_RGB_12;
-      break;
-    }
-    default:
-      return CMW_ERROR_COMPONENT_FAILURE;
-      break;
+    return ret;
   }
 
   config.image_processing_mode = mode;
@@ -466,119 +824,153 @@ static int32_t CMW_VD1943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
   /* Default VT mode*/
   config.sync_mode = VD1943_MASTER;
 
-  ret = VD1943_Init(&((CMW_VD1943_t *)io_ctx)->ctx_driver, &config);
+  ret = VD1943_Init(&vd1943_ctx->ctx_driver, &config);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  if (((CMW_VD1943_t *)io_ctx)->ctx_driver.bayer == VD1943_BAYER_NONE)
+  if (vd1943_ctx->ctx_driver.bayer == VD1943_BAYER_NONE)
   {
-    VD1943_DeInit(&((CMW_VD1943_t *)io_ctx)->ctx_driver);
+    VD1943_DeInit(&vd1943_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ((CMW_VD1943_t *)io_ctx)->IsInitialized = 1;
+  vd1943_ctx->IsInitialized = 1;
 
-  return CMW_ERROR_NONE;
-}
-
-void CMW_VD1943_SetDefaultSensorValues(CMW_VD1943_config_t *vd1943_config)
-{
-  assert(vd1943_config != NULL);
-  vd1943_config->CSI_PHYBitrate = VD1943_DEFAULT_DATARATE;
-  vd1943_config->pixel_format = CMW_PIXEL_FORMAT_RAW12;
-}
-
-static int32_t CMW_VD1943_Start(void *io_ctx)
-{
-  int ret = CMW_ERROR_NONE;
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
   /* Statistic area is provided with null value so that it force the ISP Library to get the statistic
-   * area information from the tuning file.
-   */
+    * area information from the tuning file.
+    */
   (void) ISP_IQParamCacheInit; /* unused */
-  ret = ISP_Init(&((CMW_VD1943_t *)io_ctx)->hIsp, ((CMW_VD1943_t *)io_ctx)->hdcmipp, 0, &((CMW_VD1943_t *)io_ctx)->appliHelpers, &ISP_IQParamCacheInit_VD1943);
+  ret = ISP_Init(&vd1943_ctx->hIsp, vd1943_ctx->hdcmipp, 0, (ISP_AppliHelpersTypeDef *)p_appliHelpers_ISP, &ISP_IQParamCacheInit_VD1943);
   if (ret != ISP_OK)
   {
     return CMW_ERROR_COMPONENT_FAILURE;
   }
 
-  ret = ISP_Start(&((CMW_VD1943_t *)io_ctx)->hIsp);
+  ret = ISP_SetAEConvergenceSpeed(&vd1943_ctx->hIsp, ISP_AE_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+
+  ret = ISP_SetAWBConvergenceSpeed(&vd1943_ctx->hIsp, ISP_AWB_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+#endif
+
+  return CMW_ERROR_NONE;
+}
+
+void CMW_VD1943_SetDefaultSensorValues(void *sensor_config)
+{
+  assert(sensor_config != NULL);
+  CMW_VD1943_config_t *vd1943_config = (CMW_VD1943_config_t *)sensor_config;
+  vd1943_config->CSI_PHYBitrate = VD1943_DEFAULT_DATARATE;
+  vd1943_config->sensor_stream_mode.shutter_type = CMW_VD1943_ROLLING_SHUTTER;
+  vd1943_config->sensor_stream_mode.pixel_depth = CMW_VD1943_SENSOR_PIXEL_DEPTH_12;
+  vd1943_config->sensor_stream_mode.pixel_pattern = CMW_VD1943_SENSOR_PIXEL_PATTERN_GBRG;
+  vd1943_config->sensor_stream_mode.subsampling = CMW_VD1943_SENSOR_SUBSAMPLING_OFF;
+  vd1943_config->sensor_stream_mode.dynamic_range = CMW_VD1943_DYNAMIC_RANGE_SDR;
+  vd1943_config->sensor_stream_mode.upscaling = false;
+  vd1943_config->sensor_stream_mode.split_exposure = false;
+}
+
+static int32_t CMW_VD1943_Start(void *io_ctx)
+{
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
+  int ret = CMW_ERROR_NONE;
+
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_Start(&vd1943_ctx->hIsp);
   if (ret != ISP_OK)
   {
       return CMW_ERROR_PERIPH_FAILURE;
   }
 #endif
 
-  ret = VD1943_Start(&((CMW_VD1943_t *)io_ctx)->ctx_driver);
+
+  ret = VD1943_Start(&vd1943_ctx->ctx_driver);
   if (ret) {
-    VD1943_DeInit(&((CMW_VD1943_t *)io_ctx)->ctx_driver);
+    VD1943_DeInit(&vd1943_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD1943_Run(void *io_ctx)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   int ret;
-  ret = ISP_BackgroundProcess(&((CMW_VD1943_t *)io_ctx)->hIsp);
+  ret = ISP_BackgroundProcess(&vd1943_ctx->hIsp);
   if (ret != ISP_OK)
   {
       return CMW_ERROR_PERIPH_FAILURE;
   }
 #endif
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD1943_Stop(void *io_ctx)
 {
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD1943_Stop(&((CMW_VD1943_t *)io_ctx)->ctx_driver);
+  ret = VD1943_Stop(&vd1943_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD1943_DeInit(void *io_ctx)
 {
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD1943_Stop(&((CMW_VD1943_t *)io_ctx)->ctx_driver);
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_DeInit(&vd1943_ctx->hIsp);
+  if (ret)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+#endif
+
+  ret = VD1943_DeInit(&vd1943_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ret = VD1943_DeInit(&((CMW_VD1943_t *)io_ctx)->ctx_driver);
-  if (ret)
-  {
-    return CMW_ERROR_PERIPH_FAILURE;
-  }
+  vd1943_ctx->IsInitialized = 0;
 
-  ((CMW_VD1943_t *)io_ctx)->IsInitialized = 0;
   return CMW_ERROR_NONE;
 }
 
 static void CMW_VD1943_VsyncEventCallback(void *io_ctx, uint32_t pipe)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
   /* Update the ISP frame counter and call its statistics handler */
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)io_ctx;
   switch (pipe)
   {
     case DCMIPP_PIPE0 :
-      ISP_IncDumpFrameId(&((CMW_VD1943_t *)io_ctx)->hIsp);
+      ISP_IncDumpFrameId(&vd1943_ctx->hIsp);
       break;
     case DCMIPP_PIPE1 :
-      ISP_IncMainFrameId(&((CMW_VD1943_t *)io_ctx)->hIsp);
-      ISP_GatherStatistics(&((CMW_VD1943_t *)io_ctx)->hIsp);
+      ISP_IncMainFrameId(&vd1943_ctx->hIsp);
+      ISP_GatherStatistics(&vd1943_ctx->hIsp);
       break;
     case DCMIPP_PIPE2 :
-      ISP_IncAncillaryFrameId(&((CMW_VD1943_t *)io_ctx)->hIsp);
+      ISP_IncAncillaryFrameId(&vd1943_ctx->hIsp);
       break;
   }
 #endif
@@ -588,7 +980,7 @@ static void CMW_VD1943_FrameEventCallback(void *io_ctx, uint32_t pipe)
 {
 }
 
-int32_t VD1943_RegisterBusIO(CMW_VD1943_t *io_ctx)
+static int32_t VD1943_RegisterBusIO(CMW_VD1943_t *io_ctx)
 {
   int ret;
 
@@ -603,7 +995,7 @@ int32_t VD1943_RegisterBusIO(CMW_VD1943_t *io_ctx)
   return ret;
 }
 
-int32_t VD1943_ReadID(CMW_VD1943_t *io_ctx, uint32_t *Id)
+static int32_t VD1943_ReadID(CMW_VD1943_t *io_ctx, uint32_t *Id)
 {
   uint32_t reg32;
   int32_t ret;
@@ -629,7 +1021,7 @@ static void CMW_VD1943_PowerOn(CMW_VD1943_t *io_ctx)
 	HAL_Delay(20);     /* NRST de-asserted during 20ms */
 }
 
-int CMW_VD1943_Probe(CMW_VD1943_t *io_ctx, CMW_Sensor_if_t *vd1943_if)
+static int CMW_VD1943_Probe(CMW_VD1943_t *io_ctx, CMW_Sensor_if_t *vd1943_if)
 {
   int ret = CMW_ERROR_NONE;
   uint32_t id;
@@ -664,7 +1056,6 @@ int CMW_VD1943_Probe(CMW_VD1943_t *io_ctx, CMW_Sensor_if_t *vd1943_if)
   }
 
   memset(vd1943_if, 0, sizeof(*vd1943_if));
-  vd1943_if->Init = CMW_VD1943_Init;
   vd1943_if->DeInit = CMW_VD1943_DeInit;
   vd1943_if->Run = CMW_VD1943_Run;
   vd1943_if->VsyncEventCallback = CMW_VD1943_VsyncEventCallback;
@@ -676,5 +1067,135 @@ int CMW_VD1943_Probe(CMW_VD1943_t *io_ctx, CMW_Sensor_if_t *vd1943_if)
   vd1943_if->SetExposure = CMW_VD1943_SetExposure;
   vd1943_if->SetWBRefMode = CMW_VD1943_SetWBRefMode;
   vd1943_if->ListWBRefModes = CMW_VD1943_ListWBRefModes;
+  vd1943_if->GetIspDecimationRatio = CMW_VD1943_GetIspDecimationRatio;
+
   return ret;
+}
+
+static void CMW_VD1943_ShutdownPin(int value)
+{
+  HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void CMW_VD1943_EnablePin(int value)
+{
+  HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+int32_t CMW_CAMERA_VD1943_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                              CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP)
+{
+  int32_t ret = CMW_ERROR_NONE;
+  DCMIPP_CSI_ConfTypeDef csi_conf = { 0 };
+  DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe_conf = { 0 };
+  uint32_t dt_format = 0;
+  uint32_t dt = 0;
+  VD1943_MODE_t mode;
+  CMW_PixelFormat_t pixel_format;
+  CMW_VD1943_config_t default_sensor_config;
+  int32_t csi_phybitrate_i = -1;
+  CMW_VD1943_config_t *sensor_config;
+  CMW_VD1943_t *vd1943_ctx = (CMW_VD1943_t *)sensor_ctx;
+
+  memset(vd1943_ctx, 0, sizeof(*vd1943_ctx));
+  vd1943_ctx->Address     = CAMERA_VD1943_ADDRESS;
+  vd1943_ctx->Init        = CMW_I2C_INIT;
+  vd1943_ctx->DeInit      = CMW_I2C_DEINIT;
+  vd1943_ctx->WriteReg    = CMW_I2C_WRITEREG16;
+  vd1943_ctx->ReadReg     = CMW_I2C_READREG16;
+  vd1943_ctx->Delay       = HAL_Delay;
+  vd1943_ctx->ShutdownPin = CMW_VD1943_ShutdownPin;
+  vd1943_ctx->EnablePin   = CMW_VD1943_EnablePin;
+  vd1943_ctx->hdcmipp     = hdcmipp;
+
+  ret = CMW_VD1943_Probe(vd1943_ctx, camera_drv);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  /* Special case: when resolution is not specified take the full sensor resolution */
+  if ((initSensors_params->width == 0) || (initSensors_params->height == 0))
+  {
+    initSensors_params->width = VD1943_MAX_WIDTH;
+    initSensors_params->height = VD1943_MAX_HEIGHT;
+  }
+
+  CMW_VD1943_SetDefaultSensorValues(&default_sensor_config);
+  initSensors_params->sensor_config = initSensors_params->sensor_config ? initSensors_params->sensor_config : &default_sensor_config;
+  sensor_config = (CMW_VD1943_config_t*) (initSensors_params->sensor_config);
+
+  csi_phybitrate_i = CMW_UTILS_getClosest_HAL_PHYBitrate(sensor_config->CSI_PHYBitrate);
+  if (csi_phybitrate_i < 0)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+
+  csi_conf.NumberOfLanes = DCMIPP_CSI_TWO_DATA_LANES;
+  csi_conf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
+  csi_conf.PHYBitrate = csi_phybitrate_i;
+  ret = HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csi_conf);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  ret = CMW_VD1943_GetRegMode(&sensor_config->sensor_stream_mode, &mode, &pixel_format);
+  (void)mode;
+  if (ret != CMW_ERROR_NONE)
+  {
+    return ret;
+  }
+
+  switch (pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_RAW8:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP8;
+      dt = DCMIPP_DT_RAW8;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW10:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP10;
+      dt = DCMIPP_DT_RAW10;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW12:
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP12;
+      dt = DCMIPP_DT_RAW12;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = HAL_DCMIPP_CSI_SetVCConfig(hdcmipp, DCMIPP_VIRTUAL_CHANNEL0, dt_format);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  csi_pipe_conf.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+  csi_pipe_conf.DataTypeIDA = dt;
+  csi_pipe_conf.DataTypeIDB = 0;
+  /* Pre-initialize CSI config for all the pipes */
+  for (uint32_t i = DCMIPP_PIPE0; i <= DCMIPP_PIPE2; i++)
+  {
+    ret = HAL_DCMIPP_CSI_PIPE_SetConfig(hdcmipp, i, &csi_pipe_conf);
+    if (ret != HAL_OK)
+    {
+      return CMW_ERROR_PERIPH_FAILURE;
+    }
+  }
+
+  ret = CMW_VD1943_Init(vd1943_ctx, initSensors_params, p_appliHelpers_ISP);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
 }

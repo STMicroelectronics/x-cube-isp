@@ -20,6 +20,7 @@
 #include "isp_core.h"
 #include "isp_services.h"
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
+#include "isp_tool_com.h"
 #include "isp_cmd_parser.h"
 #endif
 
@@ -199,9 +200,8 @@ static uint8_t GetAvgStats(ISP_StatAreaTypeDef *pStatArea, ISP_SVC_StatLocation 
 {
   uint32_t nb_comp_pix, comp_divider;
 
-  /* Number of pixels computed from Stat Area and considering decimation */
+  /* Number of pixels computed from Stat Area */
   nb_comp_pix = pStatArea->XSize * pStatArea->YSize;
-  nb_comp_pix /= ISP_DecimationValue.factor * ISP_DecimationValue.factor;
 
   if (location == ISP_STAT_LOC_DOWN)
   {
@@ -444,6 +444,49 @@ static ISP_SVC_StatEngineStage GetStatCycleEnd(ISP_SVC_StatLocation location)
   return stage;
 }
 
+static int sorting_color(const void *pa, const void *pb)
+{
+  const uint32_t *a = pa;
+  const uint32_t *b = pb;
+  uint32_t ca = a[0] ? a[0] : UINT32_MAX;
+  uint32_t cb = b[0] ? b[0] : UINT32_MAX;
+
+  return ca == cb ? 0 : (ca < cb ? -1 : 1);
+}
+
+static void sort_awb_parameters(const ISP_AWBAlgoTypeDef *src, ISP_AWBAlgoTypeDef *dst)
+{
+  uint32_t color_with_index[ISP_AWB_COLORTEMP_REF][2];
+  int i;
+
+  /* init color index array */
+  for (i = 0; i < ISP_AWB_COLORTEMP_REF; i++)
+  {
+    color_with_index[i][0] = src->referenceColorTemp[i];
+    color_with_index[i][1] = i;
+  }
+
+  /* sort color_with_index by color value */
+  qsort(color_with_index, ISP_AWB_COLORTEMP_REF, sizeof(color_with_index[0]), sorting_color);
+
+  /* copy into dst using sorted index */
+  for (i = 0; i < ISP_AWB_COLORTEMP_REF; i++)
+  {
+    int idx = color_with_index[i][1];
+
+    if (idx == i)
+      continue;
+
+    memcpy(dst->label[i], src->label[idx], sizeof(dst->label[0]));
+    dst->referenceColorTemp[i] = src->referenceColorTemp[idx];
+    dst->ispGainR[i] = src->ispGainR[idx];
+    dst->ispGainG[i] = src->ispGainG[idx];
+    dst->ispGainB[i] = src->ispGainB[idx];
+    memcpy(dst->coeff[i], src->coeff[idx], sizeof(dst->coeff[0]));
+    memcpy(dst->referenceRGB[i], src->referenceRGB[idx], sizeof(dst->referenceRGB[0]));
+  }
+}
+
 uint8_t LuminanceFromRGB(uint8_t r, uint8_t g, uint8_t b)
 {
   /* Compute luminance from RGB components (BT.601) */
@@ -479,13 +522,13 @@ ISP_StatusTypeDef ISP_SVC_ISP_SetDemosaicing(ISP_HandleTypeDef *hIsp, ISP_Demosa
   }
 
   /* Do not enable demosaicing if the camera sensor is a monochrome sensor */
-  if ((pConfig->enable == 0) || (pConfig->type == ISP_DEMOS_TYPE_MONO))
+  if ((pConfig->enable == 0) || (hIsp->sensorInfo.bayer_pattern == ISP_DEMOS_TYPE_MONO))
   {
     halStatus = HAL_DCMIPP_PIPE_DisableISPRawBayer2RGB(hIsp->hDcmipp, DCMIPP_PIPE1);
   }
   else
   {
-    switch(pConfig->type)
+    switch(hIsp->sensorInfo.bayer_pattern)
     {
       case ISP_DEMOS_TYPE_RGGB:
         rawBayerCfg.RawBayerType = DCMIPP_RAWBAYER_RGGB;
@@ -697,7 +740,7 @@ ISP_StatusTypeDef ISP_SVC_ISP_SetContrast(ISP_HandleTypeDef *hIsp, ISP_ContrastT
 
 /**
   * @brief  ISP_SVC_ISP_SetStatArea
-  *         Set the ISP Statistic area
+  *         Set the ISP Statistic area in HW registers
   * @param  hIsp: ISP device handle
   * @param  pConfig: Pointer to statistic area used by the IQ algorithms
   * @retval operation result
@@ -715,17 +758,17 @@ ISP_StatusTypeDef ISP_SVC_ISP_SetStatArea(ISP_HandleTypeDef *hIsp, ISP_StatAreaT
       (pConfig->YSize > ISP_STATWINDOW_MAX) ||
       (pConfig->XSize < ISP_STATWINDOW_MIN) ||
       (pConfig->YSize < ISP_STATWINDOW_MIN) ||
-      (pConfig->X0 + pConfig->XSize > hIsp->sensorInfo.width) ||
-      (pConfig->Y0 + pConfig->YSize > hIsp->sensorInfo.height))
+      (pConfig->X0 + pConfig->XSize > hIsp->sensorInfo.width / ISP_DecimationValue.factor) ||
+      (pConfig->Y0 + pConfig->YSize > hIsp->sensorInfo.height / ISP_DecimationValue.factor))
   {
     return ISP_ERR_STATAREA_EINVAL;
   }
 
   /* Set coordinates in the 'decimated' referential */
-  currentStatAreaCfg.HStart = pConfig->X0 / ISP_DecimationValue.factor;
-  currentStatAreaCfg.VStart = pConfig->Y0 / ISP_DecimationValue.factor;
-  currentStatAreaCfg.HSize = pConfig->XSize / ISP_DecimationValue.factor;
-  currentStatAreaCfg.VSize = pConfig->YSize / ISP_DecimationValue.factor;
+  currentStatAreaCfg.HStart = pConfig->X0;
+  currentStatAreaCfg.VStart = pConfig->Y0;
+  currentStatAreaCfg.HSize = pConfig->XSize;
+  currentStatAreaCfg.VSize = pConfig->YSize;
 
   if (HAL_DCMIPP_PIPE_SetISPAreaStatisticExtractionConfig(hIsp->hDcmipp, DCMIPP_PIPE1,
                                                           &currentStatAreaCfg) != HAL_OK)
@@ -750,7 +793,7 @@ ISP_StatusTypeDef ISP_SVC_ISP_SetStatArea(ISP_HandleTypeDef *hIsp, ISP_StatAreaT
 
 /**
   * @brief  ISP_SVC_ISP_GetStatArea
-  *         Get the ISP Statistic area
+  *         Get the ISP Statistic area set in HW registers
   * @param  hIsp: ISP device handle
   * @param  pConfig: Pointer to statistic area used by the IQ algorithms
   * @retval operation result
@@ -778,10 +821,10 @@ ISP_StatusTypeDef ISP_SVC_ISP_GetStatArea(ISP_HandleTypeDef *hIsp, ISP_StatAreaT
                                                         &currentStatAreaCfg);
 
     /* Consider decimation */
-    pConfig->X0 = currentStatAreaCfg.HStart * ISP_DecimationValue.factor;
-    pConfig->Y0 = currentStatAreaCfg.VStart * ISP_DecimationValue.factor;
-    pConfig->XSize = currentStatAreaCfg.HSize * ISP_DecimationValue.factor;
-    pConfig->YSize = currentStatAreaCfg.VSize * ISP_DecimationValue.factor;
+    pConfig->X0 = currentStatAreaCfg.HStart;
+    pConfig->Y0 = currentStatAreaCfg.VStart;
+    pConfig->XSize = currentStatAreaCfg.HSize;
+    pConfig->YSize = currentStatAreaCfg.VSize;
   }
 
   return ISP_OK;
@@ -1669,6 +1712,8 @@ ISP_StatusTypeDef ISP_SVC_IQParam_Init(ISP_HandleTypeDef *hIsp, const ISP_IQPara
   (void)hIsp; /* unused */
 
   ISP_IQParamCache = *ISP_IQParamCacheInit;
+  sort_awb_parameters(&ISP_IQParamCacheInit->AWBAlgo ,&ISP_IQParamCache.AWBAlgo);
+
   return ISP_OK;
 }
 
@@ -2156,7 +2201,7 @@ ISP_StatusTypeDef ISP_SVC_Stats_EvaluateUp(ISP_HandleTypeDef *hIsp, ISP_Statisti
   upG = (double)pDownStats->averageG;
   upB = (double)pDownStats->averageB;
 
-  if ((ISP_SVC_ISP_GetGain(hIsp, &ISPGain) == ISP_OK) && ISPGain.enable && ISPGain.ispGainR && ISPGain.ispGainG && ISPGain.ispGainR)
+  if ((ISP_SVC_ISP_GetGain(hIsp, &ISPGain) == ISP_OK) && ISPGain.enable && ISPGain.ispGainR && ISPGain.ispGainG && ISPGain.ispGainB)
   {
     /* Revert gain */
     upR *= (double)ISP_GAIN_PRECISION_FACTOR / ISPGain.ispGainR;
@@ -2210,11 +2255,14 @@ int32_t ISP_SVC_Misc_GetEstimatedLux(ISP_HandleTypeDef *hIsp, uint8_t averageL)
 
   if ((IQParamConfig->luxRef.HL_Expo1 == IQParamConfig->luxRef.HL_Expo2) ||
       (IQParamConfig->luxRef.LL_Expo1 == IQParamConfig->luxRef.LL_Expo2) ||
-      (IQParamConfig->luxRef.HL_Lum1 == 0) ||
-      (IQParamConfig->luxRef.LL_Lum1 == 0))
+      (IQParamConfig->luxRef.HL_Lum1 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.LL_Lum1 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.HL_LuxRef == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.LL_LuxRef == ISP_LUXREF_UNTUNED))
   {
     /* Uncalibrated lux reference points */
-    return -1;
+    Meta.lux = 0;
+    return 0;
   }
 
 
@@ -2258,4 +2306,18 @@ int32_t ISP_SVC_Misc_GetEstimatedLux(ISP_HandleTypeDef *hIsp, uint8_t averageL)
   Meta.lux = (uint32_t)((lux < 0) ? 0 : lux);
 
   return (lux < 0) ? 0 : lux;
+}
+
+/**
+  * @brief  ISP_SVC_Start_ToolCom
+  *         Start communication stack
+  * @retval ISP status
+  */
+int32_t ISP_SVC_Start_ToolCom()
+{
+#ifdef ISP_MW_TUNING_TOOL_SUPPORT
+  ISP_ToolCom_Init();
+#endif
+
+  return ISP_OK;
 }

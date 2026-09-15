@@ -59,6 +59,22 @@ typedef enum
 /* Minimum Luminance update during delay test measurements */
 #define ALGO_DELAY_L_MARGIN          3
 
+/* AE ratio exponents mapped by convergence speed enum index. */
+static const double ALGO_AEC_RATIO_EXP_BY_SPEED[] = {
+  1.0, /* ISP_AE_CONVERGENCESPEED_VERY_FAST, only used in case of fall back to ratio method */
+  0.9, /* ISP_AE_CONVERGENCESPEED_FAST */
+  0.7, /* ISP_AE_CONVERGENCESPEED_MEDIUM */
+  0.5, /* ISP_AE_CONVERGENCESPEED_SLOW */
+};
+
+/* AWB R/B ratio low pass filter divisors mapped by convergence speed enum index. */
+static const int32_t ALGO_AWB_LOWPASS_GAIN_BY_SPEED[] = {
+   1, /* ISP_AWB_CONVERGENCESPEED_VERY_FAST */
+   4, /* ISP_AWB_CONVERGENCESPEED_FAST */
+   8, /* ISP_AWB_CONVERGENCESPEED_MEDIUM */
+  12, /* ISP_AWB_CONVERGENCESPEED_SLOW */
+};
+
 /* Private macro -------------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
 ISP_StatusTypeDef ISP_Algo_BadPixel_Init(void *hIsp, void *pAlgo);
@@ -337,6 +353,21 @@ ISP_StatusTypeDef ISP_Algo_AEC_StatCb(ISP_AlgoTypeDef *pAlgo)
   return ISP_OK;
 }
 
+static uint8_t ISP_Algo_AEC_IsLuxRefUntuned(const ISP_IQParamTypeDef *pIQParamConfig)
+{
+  return (pIQParamConfig->luxRef.HL_LuxRef == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.HL_Expo1 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.HL_Lum1 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.HL_Expo2 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.HL_Lum2 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.LL_LuxRef == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.LL_Expo1 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.LL_Lum1 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.LL_Expo2 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.LL_Lum2 == ISP_LUXREF_UNTUNED ||
+          pIQParamConfig->luxRef.calibFactor == (float)ISP_LUXREF_UNTUNED);
+}
+
 /**
   * @brief  ISP_Algo_AEC_Process
   *         Process the AEC algorithm. This basic algorithm controls the sensor exposure
@@ -360,6 +391,9 @@ ISP_StatusTypeDef ISP_Algo_AEC_Process(void *hIsp, void *pAlgo)
   static uint32_t currentL;
 #endif
   int32_t estimated_lux;
+  uint8_t luxRefUntuned;
+  uint8_t useLuxModel;
+  double convSpeedExp;
   ISP_HandleTypeDef *pIsp_handle = (ISP_HandleTypeDef *)hIsp;
 
   IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
@@ -438,62 +472,87 @@ ISP_StatusTypeDef ISP_Algo_AEC_Process(void *hIsp, void *pAlgo)
     }
 
     estimated_lux = ISP_SVC_Misc_GetEstimatedLux(hIsp, (uint8_t)avgL);
+    luxRefUntuned = ISP_Algo_AEC_IsLuxRefUntuned(IQParamConfig);
+
+    useLuxModel = 0U;
+    convSpeedExp = ALGO_AEC_RATIO_EXP_BY_SPEED[ISP_AE_CONVERGENCESPEED_FAST];
+
+    if (!luxRefUntuned)
+    {
+      ISP_AE_ConvergenceSpeedTypeDef speed = IQParamConfig->AECAlgo.convergenceSpeed;
+
+      if (speed > ISP_AE_CONVERGENCESPEED_SLOW)
+      {
+        speed = ISP_AE_CONVERGENCESPEED_SLOW;
+      }
+
+      useLuxModel = (speed == ISP_AE_CONVERGENCESPEED_VERY_FAST) ? 1U : 0U;
+      convSpeedExp = ALGO_AEC_RATIO_EXP_BY_SPEED[speed];
+    }
 
 #ifdef ALGO_AEC_DBG_LOGS
     printf("Lux = %"PRIu32", L = %"PRIu32", E = %"PRIu32", G = %"PRIu32"\r\n", estimated_lux, avgL, exposureConfig.exposure, gainConfig.gain);
 #endif
 
-    if (estimated_lux >= 0)
+    if (useLuxModel)
     {
+      if (estimated_lux < 0)
+      {
+        ret = ISP_ERR_ALGO;
+        printf("ERROR: Lux value of the scene cannot be estimated\r\n");
+        break;
+      }
+
       isp_ae_get_new_exposure((uint32_t)estimated_lux, avgL, &newExposure, &newGain, exposureConfig.exposure, gainConfig.gain);
-#ifdef ALGO_PERF_DBG_LOGS
-      end_algo_calc = DWT->CYCCNT;
-#endif
-      if (gainConfig.gain != newGain)
-      {
-        /* Set new gain */
-        gainConfig.gain = newGain;
-
-        ret = ISP_SVC_Sensor_SetGain(hIsp, &gainConfig);
-        if (ret != ISP_OK)
-        {
-          return ret;
-        }
-
-#ifdef ALGO_AEC_DBG_LOGS
-        printf("New gain = %"PRIu32"\r\n", gainConfig.gain);
-#endif
-      }
-
-      if (exposureConfig.exposure != newExposure)
-      {
-        /* Set new exposure */
-        exposureConfig.exposure = newExposure;
-
-        ret = ISP_SVC_Sensor_SetExposure(hIsp, &exposureConfig);
-        if (ret != ISP_OK)
-        {
-          return ret;
-        }
-
-#ifdef ALGO_AEC_DBG_LOGS
-        printf("New exposure = %"PRIu32"\r\n", exposureConfig.exposure);
-#endif
-      }
-
-      /* Update the restart state config */
-      pRestartState = ISP_SVC_GetRestartState(hIsp);
-      if (pRestartState)
-      {
-        pRestartState->sensorGain = newGain;
-        pRestartState->sensorExposure = newExposure;
-        pRestartState->sensorConfigured = 1;
-      }
     }
     else
     {
-      ret = ISP_ERR_ALGO;
-      printf("ERROR: Lux value of the scene cannot be estimated\r\n");
+      isp_ae_get_new_exposure_ratio(avgL, convSpeedExp, &newExposure, &newGain, exposureConfig.exposure, gainConfig.gain);
+    }
+
+#ifdef ALGO_PERF_DBG_LOGS
+    end_algo_calc = DWT->CYCCNT;
+#endif
+
+    if (gainConfig.gain != newGain)
+    {
+      /* Set new gain */
+      gainConfig.gain = newGain;
+
+      ret = ISP_SVC_Sensor_SetGain(hIsp, &gainConfig);
+      if (ret != ISP_OK)
+      {
+        return ret;
+      }
+
+#ifdef ALGO_AEC_DBG_LOGS
+      printf("New gain = %"PRIu32"\r\n", gainConfig.gain);
+#endif
+    }
+
+    if (exposureConfig.exposure != newExposure)
+    {
+      /* Set new exposure */
+      exposureConfig.exposure = newExposure;
+
+      ret = ISP_SVC_Sensor_SetExposure(hIsp, &exposureConfig);
+      if (ret != ISP_OK)
+      {
+        return ret;
+      }
+
+#ifdef ALGO_AEC_DBG_LOGS
+      printf("New exposure = %"PRIu32"\r\n", exposureConfig.exposure);
+#endif
+    }
+
+    /* Update the restart state config */
+    pRestartState = ISP_SVC_GetRestartState(hIsp);
+    if (pRestartState)
+    {
+      pRestartState->sensorGain = newGain;
+      pRestartState->sensorExposure = newExposure;
+      pRestartState->sensorConfigured = 1;
     }
 
 #ifdef ALGO_PERF_DBG_LOGS
@@ -680,6 +739,8 @@ ISP_StatusTypeDef ISP_Algo_AWB_Process(void *hIsp, void *pAlgo)
   ISP_AlgoTypeDef *algo = (ISP_AlgoTypeDef *)pAlgo;
   ISP_StatusTypeDef ret_stat, ret = ISP_OK;
   uint32_t estimatedColorTemp = 0;
+  bool configUpdated = false;
+  ISP_AWB_ConvergenceSpeedTypeDef convergenceSpeed;
 
   IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
 
@@ -744,13 +805,20 @@ ISP_StatusTypeDef ISP_Algo_AWB_Process(void *hIsp, void *pAlgo)
     /* Optimization: do not ask for Up stats, but evaluate them from the down stats */
     ISP_SVC_Stats_EvaluateUp(hIsp, &stats.down, &stats.up);
 
-    ret = ISP_AWB_GetConfig(&stats.up, &ColorConvConfig, &ISPGainConfig, &estimatedColorTemp);
+    convergenceSpeed = IQParamConfig->AWBAlgo.convergenceSpeed;
+    if (convergenceSpeed > ISP_AWB_CONVERGENCESPEED_SLOW)
+    {
+      convergenceSpeed = ISP_AWB_CONVERGENCESPEED_SLOW;
+    }
+
+    ret = ISP_AWB_GetConfig(&stats.up, ALGO_AWB_LOWPASS_GAIN_BY_SPEED[convergenceSpeed], &configUpdated,
+                            &ColorConvConfig, &ISPGainConfig, &estimatedColorTemp);
 #ifdef ALGO_PERF_DBG_LOGS
       end_algo_calc = DWT->CYCCNT;
 #endif
     if (ret == ISP_OK)
     {
-      if (estimatedColorTemp != currentColorTemp || reconfigureRequest == true)
+      if (estimatedColorTemp != currentColorTemp || reconfigureRequest == true || configUpdated == true)
       {
         /* Apply Color Conversion */
         ret = ISP_SVC_ISP_SetColorConv(hIsp, &ColorConvConfig);

@@ -23,17 +23,27 @@
 #endif
 
 #include <stdint.h>
+#include "cmw_camera.h"
 #include "cmw_sensors_if.h"
 #include "cmw_errno.h"
 #include "vd55g1.h"
-#include "cmw_camera.h"
+#include "stm32n6xx_hal_dcmipp.h"
+#if !defined (CMW_USE_WITHOUT_ISP)
+#include "isp_api.h"
+#endif
 
-#define VD65G4_NAME    "VD65G4"
+#define VD65G4_NAME               "VD65G4"
+#define CAMERA_VD65G4_ADDRESS      0x20U
+#define CAMERA_VD65G4_FREQ_IN_HZ   12000000U
 
 typedef struct
 {
   uint16_t Address;
   VD55G1_Ctx_t ctx_driver;
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ISP_HandleTypeDef hIsp;
+#endif
+  DCMIPP_HandleTypeDef *hdcmipp;
   uint8_t IsInitialized;
   int32_t (*Init)(void);
   int32_t (*DeInit)(void);
@@ -45,8 +55,15 @@ typedef struct
   void (*EnablePin)(int value);
 } CMW_VD65G4_t;
 
-int CMW_VD65G4_Probe(CMW_VD65G4_t *io_ctx, CMW_Sensor_if_t *vd65g4_if);
-void CMW_VD65G4_SetDefaultSensorValues(CMW_VD65G4_config_t *vd65g4_config);
+typedef struct
+{
+  CMW_PixelFormat_t pixel_format; /*!< This parameter can be a value from @ref CMW_PIXEL_FORMAT */
+  uint32_t CSI_PHYBitrate;
+} CMW_VD65G4_config_t;
+
+int32_t CMW_CAMERA_VD65G4_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                               CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP);
+void CMW_VD65G4_SetDefaultSensorValues(void *sensor_config);
 
 #ifdef __cplusplus
 }

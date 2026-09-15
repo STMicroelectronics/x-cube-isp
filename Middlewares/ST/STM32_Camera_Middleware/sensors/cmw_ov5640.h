@@ -23,10 +23,12 @@
 #endif
 
 #include <stdint.h>
+#include "cmw_camera.h"
 #include "cmw_sensors_if.h"
 #include "cmw_errno.h"
 #include "ov5640.h"
-#include "cmw_camera.h"
+
+#define CAMERA_OV5640_ADDRESS          0x78U
 
 typedef struct
 {
@@ -44,8 +46,14 @@ typedef struct
   void (*EnablePin)(int value);
 } CMW_OV5640_t;
 
-int CMW_OV5640_Probe(CMW_OV5640_t *io_ctx, CMW_Sensor_if_t *vd55g1_if);
-void CMW_OV5640_SetDefaultSensorValues(CMW_OV5640_config_t *ov5640_config);
+typedef struct
+{
+  CMW_PixelFormat_t pixel_format; /*!< This parameter can be a value from @ref CMW_PIXEL_FORMAT */
+} CMW_OV5640_config_t;
+
+int32_t CMW_CAMERA_OV5640_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                               CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP);
+void CMW_OV5640_SetDefaultSensorValues(void *sensor_config);
 
 #ifdef __cplusplus
 }

@@ -465,6 +465,8 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
   ISP_CMD_TypeDef base_cmd, c;
   ISP_IQParamTypeDef *IQParamConfig;
   uint8_t cmd_id;
+  ISP_DecimationTypeDef decimation;
+  ISP_GetDecimationFactor(hIsp, &decimation);
 
   IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
 
@@ -533,6 +535,12 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
 
   case ISP_CMD_STATISTICAREA:
     /* Update both ISP and IQ params */
+	/* From IQTune user point of view, stat area is considered on full sensor resolution.
+	 * So we need to apply the decimation factor if any */
+    c.statArea.data.X0 /= decimation.factor;
+    c.statArea.data.Y0 /= decimation.factor;
+    c.statArea.data.XSize /= decimation.factor;
+    c.statArea.data.YSize /= decimation.factor;
     ret = ISP_SVC_ISP_SetStatArea(hIsp, &c.statArea.data);
     if (ret == ISP_OK)
     {
@@ -603,7 +611,10 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
     IQParamConfig->AECAlgo.enable = c.AECAlgo.data.enable;
     if (IQParamConfig->AECAlgo.enable)
     {
+      /* convergenceSpeed is not yet supported by the PC tool: preserve the value set by the embedded application */
+      ISP_AE_ConvergenceSpeedTypeDef convergenceSpeed = IQParamConfig->AECAlgo.convergenceSpeed;
       IQParamConfig->AECAlgo = c.AECAlgo.data;
+      IQParamConfig->AECAlgo.convergenceSpeed = convergenceSpeed;
     }
     /* Call the application API to set the exposureTarget based on the exposureCompensation
      * so that the algo will consider this update at its next process call
@@ -622,7 +633,10 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
     uint8_t originalRefRGB[ISP_AWB_COLORTEMP_REF][3];
     memcpy(originalRefRGB, IQParamConfig->AWBAlgo.referenceRGB, sizeof(IQParamConfig->AWBAlgo.referenceRGB));
     IQParamConfig->AWBAlgo.enable = c.AWBAlgo.data.enable;
+    /* convergenceSpeed is not yet supported by the PC tool: preserve the value set by the embedded application */
+    ISP_AWB_ConvergenceSpeedTypeDef awbConvergenceSpeed = IQParamConfig->AWBAlgo.convergenceSpeed;
     IQParamConfig->AWBAlgo = c.AWBAlgo.data;
+    IQParamConfig->AWBAlgo.convergenceSpeed = awbConvergenceSpeed;
     /* Patch for IQTune that does not handle the referenceRGB new params (IQTune would set all the referenceRGB to 0) */
     if ((c.AWBAlgo.data.referenceRGB[0][0] == 0) && (c.AWBAlgo.data.referenceColorTemp[0] != 0))
     {
@@ -673,6 +687,12 @@ static ISP_StatusTypeDef ISP_CmdParser_SetConfig(ISP_HandleTypeDef *hIsp, uint8_
 
   case ISP_CMD_USER_STATISTICAREA:
     /* Update both ISP and IQ params */
+	/* From IQTune user point of view, stat area is considered on full sensor resolution.
+	 * So we need to apply the decimation factor if any */
+    c.statArea.data.X0 /= decimation.factor;
+    c.statArea.data.Y0 /= decimation.factor;
+    c.statArea.data.XSize /= decimation.factor;
+    c.statArea.data.YSize /= decimation.factor;
     ret = ISP_SetStatArea(hIsp, &c.statArea.data);
     if (ret == ISP_OK)
     {
@@ -749,6 +769,8 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
   ISP_CMD_TypeDef c = { 0 };
   uint8_t cmd_id;
   uint32_t *pFrame = NULL;
+  ISP_DecimationTypeDef decimation;
+  ISP_GetDecimationFactor(hIsp, &decimation);
 
   IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
 
@@ -774,7 +796,13 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
 
   case ISP_CMD_STATISTICAREA:
     /* Get actual value from ISP, which may be defined by a static configuration or by the running application */
+    /* From IQTune user point of view, stat area is considered on full sensor resolution.
+     *  So we need to revert the decimation factor if any */
     ret = ISP_SVC_ISP_GetStatArea(hIsp, &c.statArea.data);
+    c.statArea.data.X0 *= decimation.factor;
+    c.statArea.data.Y0 *= decimation.factor;
+    c.statArea.data.XSize *= decimation.factor;
+    c.statArea.data.YSize *= decimation.factor;
     break;
 
   case ISP_CMD_SENSORGAIN:
@@ -887,7 +915,13 @@ static ISP_StatusTypeDef ISP_CmdParser_GetConfig(ISP_HandleTypeDef *hIsp, uint8_
 
   case ISP_CMD_USER_STATISTICAREA:
     /* Get actual value from ISP, which may be defined by a static configuration or by the running application */
+    /* From IQTune user point of view, stat area is considered on full sensor resolution.
+     *  So we need to revert the decimation factor if any */
     ret = ISP_GetStatArea(hIsp, &c.statArea.data);
+    c.statArea.data.X0 *= decimation.factor;
+    c.statArea.data.Y0 *= decimation.factor;
+    c.statArea.data.XSize *= decimation.factor;
+    c.statArea.data.YSize *= decimation.factor;
     break;
 
   case ISP_CMD_USER_LUX:
@@ -1012,7 +1046,8 @@ static void ISP_CmdParser_SendDumpData(uint8_t* pFrame, uint32_t size)
 
   usbx_warn_dump_status(true);
 
-  if ((ISP_HostOsType == ISP_HOST_OS_WINDOWS) && (size > ISP_MAX_DUMP_SIZE))
+  if (((ISP_HostOsType == ISP_HOST_OS_WINDOWS) || (ISP_HostOsType == ISP_HOST_OS_MAC)) &&
+      (size > ISP_MAX_DUMP_SIZE))
   {
     /* Split the data in several parts */
     do {
@@ -1041,7 +1076,10 @@ static void ISP_CmdParser_SendDumpData(uint8_t* pFrame, uint32_t size)
       /* Dirty hack that allows to dump frame with windows environment
        * It slow down new transmission after having receive the acknowledgement.
        */
-      for (uint32_t i = 0 ; i < 30000 ; i++);
+      volatile uint32_t delay = 30000U;
+      while (delay-- > 0U)
+      {
+      }
 
     } while (remaining > 0);
   }

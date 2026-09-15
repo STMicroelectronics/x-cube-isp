@@ -19,6 +19,7 @@
 #include "cmw_utils.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include "stm32n6xx_hal_dcmipp.h"
 
 #ifndef MIN
@@ -36,39 +37,42 @@
 
 static void CMW_UTILS_get_crop_config(uint32_t cam_width, uint32_t cam_height, uint32_t pipe_width,
                                       uint32_t pipe_height, DCMIPP_CropConfTypeDef *crop);
-static void CMW_UTILS_get_crop_config_from_manual(CMW_Manual_roi_area_t *conf, DCMIPP_CropConfTypeDef *crop);
+static void CMW_UTILS_get_crop_config_from_manual(CMW_Manual_roi_area_t *conf, DCMIPP_CropConfTypeDef *crop,
+                                                  uint32_t ratio_h, uint32_t ratio_v);
 static void CMW_UTILS_get_down_config(float ratio_width, float ratio_height, int width, int height,
                                       DCMIPP_DownsizeTypeDef *down);
 static uint32_t CMW_UTILS_get_dec_ratio_and_update(float *ratio, int is_vertical);
 static void CMW_UTILS_get_scale_configs(CMW_DCMIPP_Conf_t *p_conf, float ratio_width, float ratio_height,
                                        DCMIPP_DecimationConfTypeDef *dec, DCMIPP_DownsizeTypeDef *down);
 
-void CMW_UTILS_GetPipeConfig(uint32_t cam_width, uint32_t cam_height, CMW_DCMIPP_Conf_t *p_conf,
-                             DCMIPP_CropConfTypeDef *crop, DCMIPP_DecimationConfTypeDef *dec,
+void CMW_UTILS_GetPipeConfig(uint32_t cam_width, uint32_t cam_height, uint32_t predec_ratio_h, uint32_t predec_ratio_v,
+                             CMW_DCMIPP_Conf_t *p_conf, DCMIPP_CropConfTypeDef *crop, DCMIPP_DecimationConfTypeDef *dec,
                              DCMIPP_DownsizeTypeDef *down)
 {
+  uint32_t cam_height_decim = cam_height / predec_ratio_v;
+  uint32_t cam_width_decim = cam_width / predec_ratio_h;
   float ratio_height = 0;
   float ratio_width = 0;
 
   if (p_conf->mode == CMW_Aspect_ratio_crop)
   {
-    CMW_UTILS_get_crop_config(cam_width, cam_height, p_conf->output_width, p_conf->output_height, crop);
+    CMW_UTILS_get_crop_config(cam_width_decim, cam_height_decim, p_conf->output_width, p_conf->output_height, crop);
     ratio_width = (float)crop->HSize / p_conf->output_width;
     ratio_height = (float)crop->VSize / p_conf->output_height;
   }
   else if (p_conf->mode == CMW_Aspect_ratio_fit)
   {
-    ratio_width = (float)cam_width / p_conf->output_width;
-    ratio_height = (float)cam_height / p_conf->output_height;
+    ratio_width = (float)cam_width_decim / p_conf->output_width;
+    ratio_height = (float)cam_height_decim / p_conf->output_height;
   }
   else if (p_conf->mode == CMW_Aspect_ratio_fullscreen)
   {
-    ratio_height = (float) cam_height / p_conf->output_height;
+    ratio_height = (float) cam_height_decim / p_conf->output_height;
     ratio_width = (float) ratio_height;
   }
   else
   {
-    CMW_UTILS_get_crop_config_from_manual(&p_conf->manual_conf, crop);
+    CMW_UTILS_get_crop_config_from_manual(&p_conf->manual_conf, crop, predec_ratio_h, predec_ratio_v);
     ratio_width = (float)crop->HSize / p_conf->output_width;
     ratio_height = (float)crop->VSize / p_conf->output_height;
   }
@@ -181,12 +185,13 @@ static void CMW_UTILS_get_crop_config(uint32_t cam_width, uint32_t cam_height, u
   crop->PipeArea = DCMIPP_POSITIVE_AREA;
 }
 
-static void CMW_UTILS_get_crop_config_from_manual(CMW_Manual_roi_area_t *roi, DCMIPP_CropConfTypeDef *crop)
+static void CMW_UTILS_get_crop_config_from_manual(CMW_Manual_roi_area_t *roi, DCMIPP_CropConfTypeDef *crop,
+                                                  uint32_t predec_ratio_h, uint32_t predec_ratio_v)
 {
-  crop->HSize = roi->width;
-  crop->VSize = roi->height;
-  crop->HStart = roi->offset_x;
-  crop->VStart = roi->offset_y;
+  crop->HSize = roi->width / predec_ratio_h;
+  crop->VSize = roi->height / predec_ratio_v;
+  crop->HStart = roi->offset_x / predec_ratio_h;
+  crop->VStart = roi->offset_y / predec_ratio_v;
 }
 
 static void CMW_UTILS_get_down_config(float ratio_width, float ratio_height, int width, int height, DCMIPP_DownsizeTypeDef *down)
@@ -237,3 +242,32 @@ static void CMW_UTILS_get_scale_configs(CMW_DCMIPP_Conf_t *p_conf, float ratio_w
   CMW_UTILS_get_down_config(ratio_width, ratio_height, p_conf->output_width, p_conf->output_height, down);
 }
 
+int32_t CMW_UTILS_GetIspDecimationRatio_NoIsp(int32_t *ratio_h, int32_t *ratio_v)
+{
+  *ratio_h = *ratio_v = 1;
+
+  return CMW_ERROR_NONE;
+}
+
+#if !defined (CMW_USE_WITHOUT_ISP)
+int32_t CMW_UTILS_GetIspDecimationRatio_WithIsp(ISP_HandleTypeDef *hIsp, int32_t *ratio_h, int32_t *ratio_v)
+{
+  ISP_DecimationTypeDef decim;
+  int ret;
+
+  if (!hIsp->isInitialized)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = ISP_GetDecimationFactor(hIsp, &decim);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  *ratio_h = *ratio_v = (int32_t) decim.factor;
+
+  return CMW_ERROR_NONE;
+}
+#endif

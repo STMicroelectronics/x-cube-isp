@@ -34,23 +34,26 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(AXISRAM2_S) + LENGTH(AXISRAM2_S); /* end of "AXISRAM2_S" Ram type memory */
+_estack = ORIGIN(AXISRAM1_2_S) + LENGTH(AXISRAM1_2_S); /* end of "AXISRAM1_2_S" Ram type memory */
 _sstack = _estack - _Min_Stack_Size;
 
 _Min_Heap_Size = 0x200; /* required amount of heap  */
 _Min_Stack_Size = 0x1000; /* required amount of stack */
 
 /* Memories definition */
-/* Main camera framebuffer (1MB)  -> AXISRAM1_S */
-/* Software                       -> AXISRAM2_S (= second half of SRAM2), so it can be run by the bootrom/fsbl */
-/* Dump buffer and overlay (32MB) -> PSRAM */
+/* Memory map used by ISP_IQTune_App:
+ * - AXISRAM1_2_S: 0x34000400..0x3417FFFF
+ *                 (application code/data, stack/heap, internal frame buffers)
+ * - PSRAM:        0x90000000..0x91FFFFFF
+ *                 (external large buffers: dump/overlay)
+ *
+ * Do not use AXISRAM2_S (0x34180000..0x341FFFFF) in this linker script.
+ * This region is reserved for FSBL and must remain untouched by the app.
+ */
 MEMORY
 {
-  AXISRAM1_S1 (xrw)       : ORIGIN = 0x34000000, LENGTH = 620K
-  AXISRAM1_S2 (xrw)       : ORIGIN = 0x3409B000, LENGTH =  84K
-  AXISRAM1_UNCACHED (xrw) : ORIGIN = 0x340B0000, LENGTH = 320K
-  AXISRAM2_S  (xrw)       : ORIGIN = 0x34180400, LENGTH = 511K
-  PSRAM (xrw)             : ORIGIN = 0x90000000, LENGTH =  32M
+  AXISRAM1_2_S      (xrw) : ORIGIN = 0x34000400, LENGTH = 1535k /* 2M-512k-1k */
+  PSRAM             (xrw) : ORIGIN = 0x90000000, LENGTH =   32M
 }
 
 /* Sections */
@@ -62,7 +65,7 @@ SECTIONS
     . = ALIGN(4);
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   /* The program code and other data into "RAM" Ram type memory */
   .text :
@@ -81,14 +84,14 @@ SECTIONS
 
     . = ALIGN(4);
     _etext = .;        /* define a global symbols at end of code */
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   .gnu.sgstubs :
   {
     . = ALIGN(4);
     *(.gnu.sgstubs*)   /* Secure Gateway stubs */
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   /* Constant data into "RAM" Ram type memory */
   .rodata :
@@ -97,13 +100,13 @@ SECTIONS
     *(.rodata)         /* .rodata sections (constants, strings, etc.) */
     *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   .ARM.extab   : {
     . = ALIGN(4);
     *(.ARM.extab* .gnu.linkonce.armextab.*)
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   .ARM : {
     . = ALIGN(4);
@@ -111,7 +114,7 @@ SECTIONS
     *(.ARM.exidx*)
     __exidx_end = .;
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   .preinit_array     :
   {
@@ -120,7 +123,7 @@ SECTIONS
     KEEP (*(.preinit_array*))
     PROVIDE_HIDDEN (__preinit_array_end = .);
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   .init_array :
   {
@@ -130,7 +133,7 @@ SECTIONS
     KEEP (*(.init_array*))
     PROVIDE_HIDDEN (__init_array_end = .);
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   .fini_array :
   {
@@ -140,7 +143,7 @@ SECTIONS
     KEEP (*(.fini_array*))
     PROVIDE_HIDDEN (__fini_array_end = .);
     . = ALIGN(4);
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   /* Used by the startup to initialize data */
   _sidata = LOADADDR(.data);
@@ -156,7 +159,7 @@ SECTIONS
     . = ALIGN(4);
     _edata = .;        /* define a global symbol at data end */
 
-  } >AXISRAM2_S
+  } >AXISRAM1_2_S
 
   /* Uninitialized data section into "RAM" Ram type memory */
   . = ALIGN(4);
@@ -172,18 +175,7 @@ SECTIONS
     . = ALIGN(4);
     _ebss = .;         /* define a global symbol at bss end */
     __bss_end__ = _ebss;
-  } >AXISRAM2_S
-
-  /* Uncached AXI SRAM */
-  .uncached_bss (NOLOAD) :
-  {
-    __uncached_bss_start__ = .;
-    . = ALIGN(4);
-    *(.uncached_bss)
-    *(.uncached_bss*)
-    . = ALIGN(4);
-    __uncached_bss_end__ = .;
-  } >AXISRAM1_UNCACHED
+  } >AXISRAM1_2_S
 
   /* User_heap_stack section, used to check that there is enough "RAM" Ram  type memory left */
   ._user_heap_stack :
@@ -194,15 +186,15 @@ SECTIONS
     . = . + _Min_Heap_Size;
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
-  } >AXISRAM1_S2
+  } >AXISRAM1_2_S
 
-  /* Camera frame buffer in another part of RAM */
+  /* Camera frame buffer in internal RAM */
   .buffRam (NOLOAD):
   {
     . = ALIGN(4);
     *(.buffRam)
     . = ALIGN(4);
-  } >AXISRAM1_S1
+  } >AXISRAM1_2_S
 
   .psram_section (NOLOAD):
   {

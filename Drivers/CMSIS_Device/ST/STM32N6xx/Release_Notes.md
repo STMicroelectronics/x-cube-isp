@@ -33,9 +33,45 @@ Various template files are provided to easily build an application. They can be 
 ::: {.col-sm-12 .col-lg-8}
 # Update history
 
+::: {.collapse}
+<input type="checkbox" id="collapse-section5" checked aria-hidden="true">
+<label for="collapse-section5" checked aria-hidden="true">__V1.4.0 / 03-June-2026__</label>
+<div>
+
+## Main Changes
+
+###  Fourth maintenance release of **CMSIS devices drivers** for **STM32N6xx** series
+
+## Contents
+
+  - Fix USB_OTG_GCCFG_FSVMINUS_Msk macro by adding missing parenthesis.
+  - Rename CSI_PCR_PWRDOWN bit to CSI_PCR_NPWRDOWN to be aligned with reference manual v4.
+
+## Development Toolchains and Compilers
+
+- IAR Embedded Workbench for ARM (EWARM) toolchain V9.40.1
+- RealView Microcontroller Development Kit (MDK-ARM) toolchain V5.39
+- STM32CubeIDE V2.1.1 (gcc13)
+
+## Known Limitations
+
+- None
+
+## Dependencies
+
+- None
+
+## Notes
+
+- None
+
+
+</div>
+:::
+
 
 ::: {.collapse}
-<input type="checkbox" id="collapse-section4" checked aria-hidden="true">
+<input type="checkbox" id="collapse-section4" aria-hidden="true">
 <label for="collapse-section4" checked aria-hidden="true">__V1.3.0 / 29-October-2025__</label>
 <div>
 

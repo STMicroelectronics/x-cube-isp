@@ -23,19 +23,24 @@
 #endif
 
 #include <stdint.h>
+#include "cmw_camera.h"
 #include "cmw_sensors_if.h"
 #include "cmw_errno.h"
 #include "imx335.h"
+#if !defined (CMW_USE_WITHOUT_ISP)
 #include "isp_api.h"
-#include "cmw_camera.h"
+#endif
+
+#define CAMERA_IMX335_ADDRESS          0x34U
 
 typedef struct
 {
   uint16_t Address;
   uint32_t ClockInHz;
   IMX335_Object_t ctx_driver;
+#if !defined (CMW_USE_WITHOUT_ISP)
   ISP_HandleTypeDef hIsp;
-  ISP_AppliHelpersTypeDef appliHelpers;
+#endif
   DCMIPP_HandleTypeDef *hdcmipp;
   uint8_t IsInitialized;
   int32_t (*Init)(void);
@@ -48,8 +53,13 @@ typedef struct
   void (*EnablePin)(int value);
 } CMW_IMX335_t;
 
-int CMW_IMX335_Probe(CMW_IMX335_t *io_ctx, CMW_Sensor_if_t *vd55g1_if);
-void CMW_IMX335_SetDefaultSensorValues(CMW_IMX335_config_t *imx335_config);
+typedef struct
+{
+  CMW_PixelFormat_t pixel_format; /*!< This parameter can be a value from @ref CMW_PIXEL_FORMAT */
+} CMW_IMX335_config_t;
+
+int32_t CMW_CAMERA_IMX335_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp, CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP);
+void CMW_IMX335_SetDefaultSensorValues(void *sensor_config);
 
 #ifdef __cplusplus
 }

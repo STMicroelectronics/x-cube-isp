@@ -22,14 +22,15 @@
 #include <string.h>
 #include "cmw_imx335.h"
 #include "cmw_camera.h"
+#include "cmw_utils.h"
 #include "imx335_reg.h"
 #include "imx335.h"
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#include "cmw_io.h"
+#if !defined (CMW_USE_WITHOUT_ISP)
 #include "isp_param_conf.h"
 #endif
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
-
 
 static int CMW_IMX335_GetResType(uint32_t width, uint32_t height, uint32_t*res)
 {
@@ -41,6 +42,7 @@ static int CMW_IMX335_GetResType(uint32_t width, uint32_t height, uint32_t*res)
   {
     return CMW_ERROR_WRONG_PARAM;
   }
+
   return 0;
 }
 
@@ -68,36 +70,46 @@ static int32_t CMW_IMX335_getMirrorFlipConfig(uint32_t Config)
   return ret;
 }
 
-static int32_t CMW_IMX335_DeInit(void *io_ctx)
+static int32_t CMW_IMX335_Stop(void *io_ctx)
 {
-  int ret = CMW_ERROR_NONE;
-  ret = ISP_DeInit(&((CMW_IMX335_t *)io_ctx)->hIsp);
-  if (ret)
-  {
-    return CMW_ERROR_COMPONENT_FAILURE;
-  }
-
-  ret = IMX335_DeInit(&((CMW_IMX335_t *)io_ctx)->ctx_driver);
-  if (ret)
-  {
-    return CMW_ERROR_COMPONENT_FAILURE;
-  }
-  return ret;
+  /*Not Implemented in the Driver */
+  UNUSED(io_ctx);
+  return CMW_ERROR_NONE;
 }
 
-static int32_t CMW_IMX335_ReadID(void *io_ctx, uint32_t *Id)
+static int32_t CMW_IMX335_DeInit(void *io_ctx)
 {
-  return IMX335_ReadID(&((CMW_IMX335_t *)io_ctx)->ctx_driver, Id);
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
+  int ret = CMW_ERROR_NONE;
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_DeInit(&imx335_ctx->hIsp);
+  if (ret)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+#endif
+
+  ret = IMX335_DeInit(&imx335_ctx->ctx_driver);
+  if (ret)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  return ret;
 }
 
 static int32_t CMW_IMX335_SetGain(void *io_ctx, int32_t gain)
 {
-  return IMX335_SetGain(&((CMW_IMX335_t *)io_ctx)->ctx_driver, gain);
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
+
+  return IMX335_SetGain(&imx335_ctx->ctx_driver, gain);
 }
 
 static int32_t CMW_IMX335_SetExposure(void *io_ctx, int32_t exposure)
 {
-  return IMX335_SetExposure(&((CMW_IMX335_t *)io_ctx)->ctx_driver, exposure);
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
+
+  return IMX335_SetExposure(&imx335_ctx->ctx_driver, exposure);
 }
 
 /**
@@ -107,61 +119,79 @@ static int32_t CMW_IMX335_SetExposure(void *io_ctx, int32_t exposure)
   * @param  RefColorTemp color temperature if automatic mode is disabled
   * @retval Component status
   */
-int32_t CMW_IMX335_SetWBRefMode(void *io_ctx, uint8_t Automatic, uint32_t RefColorTemp)
+static int32_t CMW_IMX335_SetWBRefMode(void *io_ctx, uint8_t Automatic, uint32_t RefColorTemp)
 {
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = ISP_SetWBRefMode(&((CMW_IMX335_t *)io_ctx)->hIsp, Automatic, RefColorTemp);
+  ret = ISP_SetWBRefMode(&imx335_ctx->hIsp, Automatic, RefColorTemp);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
-
   return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
 }
 
 /**
   * @brief  List the sensor white balance modes
   * @param  io_ctx  pointer to component object
   * @param  RefColorTemp color temperature list
+  * @param  array_size number of entries available in RefColorTemp
   * @retval Component status
   */
-int32_t CMW_IMX335_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[])
+static int32_t CMW_IMX335_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[], uint32_t array_size)
 {
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = ISP_ListWBRefModes(&((CMW_IMX335_t *)io_ctx)->hIsp, RefColorTemp);
+  assert(array_size >= CMW_CAMERA_NB_WB_REF_MODES);
+
+  ret = ISP_ListWBRefModes(&imx335_ctx->hIsp, RefColorTemp);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
-
   return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
 }
 
 static int32_t CMW_IMX335_SetFrequency(void *io_ctx, int32_t frequency)
 {
-  return IMX335_SetFrequency(&((CMW_IMX335_t *)io_ctx)->ctx_driver, frequency);
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
+
+  return IMX335_SetFrequency(&imx335_ctx->ctx_driver, frequency);
 }
 
 static int32_t CMW_IMX335_SetFramerate(void *io_ctx, int32_t framerate)
 {
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
   const int32_t available_imx335_fps[] = {10, 15, 20, 25, 30};
 
   for (int i = 0; i < ARRAY_SIZE(available_imx335_fps); i++)
     if (framerate == available_imx335_fps[i])
-      return IMX335_SetFramerate(&((CMW_IMX335_t *)io_ctx)->ctx_driver, framerate);
+      return IMX335_SetFramerate(&imx335_ctx->ctx_driver, framerate);
 
   return CMW_ERROR_WRONG_PARAM;
 }
 
 static int32_t CMW_IMX335_SetMirrorFlip(void *io_ctx, uint32_t config)
 {
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
   int32_t mirrorFlip = CMW_IMX335_getMirrorFlipConfig(config);
-  return IMX335_MirrorFlipConfig(&((CMW_IMX335_t *)io_ctx)->ctx_driver, mirrorFlip);
+
+  return IMX335_MirrorFlipConfig(&imx335_ctx->ctx_driver, mirrorFlip);
 }
 
-static int32_t CMW_IMX335_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
+static int32_t CMW_IMX335_GetSensorInfo(void *io_ctx, CMW_Sensor_Info_t *info)
 {
   if ((io_ctx ==  NULL) || (info == NULL))
   {
@@ -192,19 +222,30 @@ static int32_t CMW_IMX335_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
 
 static int32_t CMW_IMX335_SetTestPattern(void *io_ctx, int32_t mode)
 {
-  return IMX335_SetTestPattern(&((CMW_IMX335_t *)io_ctx)->ctx_driver, mode);
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
+
+  return IMX335_SetTestPattern(&imx335_ctx->ctx_driver, mode);
 }
 
-static int32_t CMW_IMX335_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
+static int32_t CMW_IMX335_GetIspDecimationRatio(void *io_ctx, int32_t *ratio_h, int32_t *ratio_v)
 {
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_IMX335_t *ctx = (CMW_IMX335_t *) io_ctx;
+
+  return CMW_UTILS_GetIspDecimationRatio_WithIsp(&ctx->hIsp, ratio_h, ratio_v);
+#else
+  return CMW_UTILS_GetIspDecimationRatio_NoIsp(ratio_h, ratio_v);
+#endif
+}
+
+static int32_t CMW_IMX335_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor, void *p_appliHelpers_ISP)
+{
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
   uint32_t resolution;
   CMW_IMX335_config_t *sensor_config;
   sensor_config = (CMW_IMX335_config_t*)(initSensor->sensor_config);
-  if (sensor_config == NULL)
-  {
-    return CMW_ERROR_WRONG_PARAM;
-  }
+  assert(sensor_config != NULL);
 
   ret = CMW_IMX335_GetResType(initSensor->width, initSensor->height, &resolution);
   if (ret)
@@ -218,54 +259,73 @@ static int32_t CMW_IMX335_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
     return CMW_ERROR_WRONG_PARAM;
   }
 
-  ret = IMX335_Init(&((CMW_IMX335_t *)io_ctx)->ctx_driver, resolution, sensor_config->pixel_format);
+  ret = IMX335_Init(&imx335_ctx->ctx_driver, resolution, sensor_config->pixel_format);
   if (ret != IMX335_OK)
   {
     return CMW_ERROR_COMPONENT_FAILURE;
   }
 
-  return CMW_ERROR_NONE;
-}
-
-void CMW_IMX335_SetDefaultSensorValues(CMW_IMX335_config_t *imx335_config)
-{
-  assert(imx335_config != NULL);
-  imx335_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
-}
-
-static int32_t CMW_IMX335_Start(void *io_ctx)
-{
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
-  int ret;
+#if !defined (CMW_USE_WITHOUT_ISP)
   /* Statistic area is provided with null value so that it force the ISP Library to get the statistic
    * area information from the tuning file.
    */
   (void) ISP_IQParamCacheInit; /* unused */
-  ret = ISP_Init(&((CMW_IMX335_t *)io_ctx)->hIsp, ((CMW_IMX335_t *)io_ctx)->hdcmipp, 0, &((CMW_IMX335_t *)io_ctx)->appliHelpers, &ISP_IQParamCacheInit_IMX335);
+  ret = ISP_Init(&imx335_ctx->hIsp, imx335_ctx->hdcmipp, 0, (ISP_AppliHelpersTypeDef *)p_appliHelpers_ISP, &ISP_IQParamCacheInit_IMX335);
   if (ret != ISP_OK)
   {
     return CMW_ERROR_COMPONENT_FAILURE;
   }
 
-  ret = ISP_Start(&((CMW_IMX335_t *)io_ctx)->hIsp);
+  ret = ISP_SetAEConvergenceSpeed(&imx335_ctx->hIsp, ISP_AE_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+
+  ret = ISP_SetAWBConvergenceSpeed(&imx335_ctx->hIsp, ISP_AWB_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+#endif
+
+  return CMW_ERROR_NONE;
+}
+
+void CMW_IMX335_SetDefaultSensorValues(void *sensor_config)
+{
+  assert(sensor_config != NULL);
+  CMW_IMX335_config_t *imx335_config = (CMW_IMX335_config_t *)sensor_config;
+  imx335_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
+}
+
+static int32_t CMW_IMX335_Start(void *io_ctx)
+{
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
+#if !defined (CMW_USE_WITHOUT_ISP)
+  int ret;
+  ret = ISP_Start(&imx335_ctx->hIsp);
   if (ret != ISP_OK)
   {
       return CMW_ERROR_PERIPH_FAILURE;
   }
 #endif
-  return IMX335_Start(&((CMW_IMX335_t *)io_ctx)->ctx_driver);
+
+  return IMX335_Start(&imx335_ctx->ctx_driver);
 }
 
 static int32_t CMW_IMX335_Run(void *io_ctx)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
   int ret;
-  ret = ISP_BackgroundProcess(&((CMW_IMX335_t *)io_ctx)->hIsp);
+  ret = ISP_BackgroundProcess(&imx335_ctx->hIsp);
   if (ret != ISP_OK)
   {
       return CMW_ERROR_PERIPH_FAILURE;
   }
 #endif
+
   return CMW_ERROR_NONE;
 }
 
@@ -305,19 +365,20 @@ static void CMW_IMX335_PowerOn(CMW_IMX335_t *io_ctx)
 
 static void CMW_IMX335_VsyncEventCallback(void *io_ctx, uint32_t pipe)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
   /* Update the ISP frame counter and call its statistics handler */
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)io_ctx;
   switch (pipe)
   {
     case DCMIPP_PIPE0 :
-      ISP_IncDumpFrameId(&((CMW_IMX335_t *)io_ctx)->hIsp);
+      ISP_IncDumpFrameId(&imx335_ctx->hIsp);
       break;
     case DCMIPP_PIPE1 :
-      ISP_IncMainFrameId(&((CMW_IMX335_t *)io_ctx)->hIsp);
-      ISP_GatherStatistics(&((CMW_IMX335_t *)io_ctx)->hIsp);
+      ISP_IncMainFrameId(&imx335_ctx->hIsp);
+      ISP_GatherStatistics(&imx335_ctx->hIsp);
       break;
     case DCMIPP_PIPE2 :
-      ISP_IncAncillaryFrameId(&((CMW_IMX335_t *)io_ctx)->hIsp);
+      ISP_IncAncillaryFrameId(&imx335_ctx->hIsp);
       break;
   }
 #endif
@@ -327,7 +388,7 @@ static void CMW_IMX335_FrameEventCallback(void *io_ctx, uint32_t pipe)
 {
 }
 
-int CMW_IMX335_Probe(CMW_IMX335_t *io_ctx, CMW_Sensor_if_t *imx335_if)
+static int CMW_IMX335_Probe(CMW_IMX335_t *io_ctx, CMW_Sensor_if_t *imx335_if)
 {
   int ret = CMW_ERROR_NONE;
   uint32_t id;
@@ -357,21 +418,136 @@ int CMW_IMX335_Probe(CMW_IMX335_t *io_ctx, CMW_Sensor_if_t *imx335_if)
   }
 
   memset(imx335_if, 0, sizeof(*imx335_if));
-  imx335_if->Init = CMW_IMX335_Init;
   imx335_if->Start = CMW_IMX335_Start;
+  imx335_if->Stop = CMW_IMX335_Stop;
   imx335_if->DeInit = CMW_IMX335_DeInit;
   imx335_if->Run = CMW_IMX335_Run;
   imx335_if->VsyncEventCallback = CMW_IMX335_VsyncEventCallback;
   imx335_if->FrameEventCallback = CMW_IMX335_FrameEventCallback;
-  imx335_if->ReadID = CMW_IMX335_ReadID;
   imx335_if->SetGain = CMW_IMX335_SetGain;
   imx335_if->SetExposure = CMW_IMX335_SetExposure;
   imx335_if->SetWBRefMode = CMW_IMX335_SetWBRefMode;
   imx335_if->ListWBRefModes = CMW_IMX335_ListWBRefModes;
-  imx335_if->SetFrequency = CMW_IMX335_SetFrequency;
   imx335_if->SetFramerate = CMW_IMX335_SetFramerate;
   imx335_if->SetMirrorFlip = CMW_IMX335_SetMirrorFlip;
   imx335_if->GetSensorInfo = CMW_IMX335_GetSensorInfo;
   imx335_if->SetTestPattern = CMW_IMX335_SetTestPattern;
+  imx335_if->GetIspDecimationRatio = CMW_IMX335_GetIspDecimationRatio;
+
   return ret;
 }
+
+static void CMW_IMX335_ShutdownPin(int value)
+{
+  HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void CMW_IMX335_EnablePin(int value)
+{
+  HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+int32_t CMW_CAMERA_IMX335_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp, CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP)
+{
+  int32_t ret = CMW_ERROR_NONE;
+  DCMIPP_CSI_ConfTypeDef csi_conf = { 0 };
+  DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe_conf = { 0 };
+  uint32_t dt_format = 0;
+  uint32_t dt = 0;
+  CMW_IMX335_t *imx335_ctx = (CMW_IMX335_t *)sensor_ctx;
+  CMW_IMX335_config_t default_sensor_config;
+  CMW_IMX335_config_t *sensor_config;
+
+  memset(imx335_ctx, 0, sizeof(*imx335_ctx));
+  imx335_ctx->Address     = CAMERA_IMX335_ADDRESS;
+  imx335_ctx->Init        = CMW_I2C_INIT;
+  imx335_ctx->DeInit      = CMW_I2C_DEINIT;
+  imx335_ctx->ReadReg     = CMW_I2C_READREG16;
+  imx335_ctx->WriteReg    = CMW_I2C_WRITEREG16;
+  imx335_ctx->GetTick     = BSP_GetTick;
+  imx335_ctx->Delay       = HAL_Delay;
+  imx335_ctx->ShutdownPin = CMW_IMX335_ShutdownPin;
+  imx335_ctx->EnablePin   = CMW_IMX335_EnablePin;
+  imx335_ctx->hdcmipp     = hdcmipp;
+
+  ret = CMW_IMX335_Probe(imx335_ctx, camera_drv);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  /* Special case: when resolution is not specified take the full sensor resolution */
+  if ((initSensors_params->width == 0) || (initSensors_params->height == 0))
+  {
+    CMW_Sensor_Info_t sensor_info;
+    camera_drv->GetSensorInfo(imx335_ctx, &sensor_info);
+    initSensors_params->width = sensor_info.width;
+    initSensors_params->height = sensor_info.height;
+  }
+
+  CMW_IMX335_SetDefaultSensorValues(&default_sensor_config);
+  initSensors_params->sensor_config = initSensors_params->sensor_config ? initSensors_params->sensor_config : &default_sensor_config;
+  sensor_config = (CMW_IMX335_config_t*) (initSensors_params->sensor_config);
+
+  ret = CMW_IMX335_SetFrequency(imx335_ctx, IMX335_INCK_24MHZ);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = camera_drv->SetFramerate(imx335_ctx, initSensors_params->fps);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  switch (sensor_config->pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    case CMW_PIXEL_FORMAT_RAW10:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP10;
+      dt = DCMIPP_DT_RAW10;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  csi_conf.NumberOfLanes = DCMIPP_CSI_TWO_DATA_LANES;
+  csi_conf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
+  csi_conf.PHYBitrate = DCMIPP_CSI_PHY_BT_1600;
+  ret = HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csi_conf);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  ret = HAL_DCMIPP_CSI_SetVCConfig(hdcmipp, DCMIPP_VIRTUAL_CHANNEL0, dt_format);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  csi_pipe_conf.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+  csi_pipe_conf.DataTypeIDA = dt;
+  csi_pipe_conf.DataTypeIDB = 0;
+  /* Pre-initialize CSI config for all the pipes */
+  for (uint32_t i = DCMIPP_PIPE0; i <= DCMIPP_PIPE2; i++)
+  {
+    ret = HAL_DCMIPP_CSI_PIPE_SetConfig(hdcmipp, i, &csi_pipe_conf);
+    if (ret != HAL_OK)
+    {
+      return CMW_ERROR_PERIPH_FAILURE;
+    }
+  }
+
+  ret = CMW_IMX335_Init(imx335_ctx, initSensors_params, p_appliHelpers_ISP);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  return ret;
+}
+

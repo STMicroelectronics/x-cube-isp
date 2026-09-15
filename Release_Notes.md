@@ -32,6 +32,21 @@ the board.
 
 ## Update history
 
+### V2.1.0 / September 2026
+
+- **Support for camera > 5 MP**
+- **New tuning parameters** are available for:
+  - VD65G4
+  - VD66GY
+  - VD1943
+  - IMX477 (New supported Camera)
+- Update to HAL 1.4.0
+- **Enhance 2A algos with a new convergence speed parameter**
+- Double buffering to avoid tearing
+- Add Preview app which only shows an example on how to use the CMW + ISP in a simple application
+- Some Bug fixes
+- Use An FSBL for boot from flash mode (see [Doc/Boot-Overview.md](Doc/Boot-Overview.md))
+
 ### V2.0.2 / July 2026
 
 - Changed UVC name (the UVC camera might need to be reinstalled)
@@ -80,15 +95,15 @@ the board.
 | Name                         | Version
 |-----                         | -------
 | CMSIS                        | 5.9.0
-| STM32N6xx CMSIS Device       | 1.3.0
-| STM32N6xx HAL/LL Drivers     | 1.3.0
-| STM32N6570-DK BSP Drivers    | 1.3.0
+| STM32N6xx CMSIS Device       | 1.4.0
+| STM32N6xx HAL/LL Drivers     | 1.4.0
+| STM32N6570-DK BSP Drivers    | 1.4.1
 | BSP Component aps256xx       | 1.0.6
 | BSP Component Common         | 7.3.0
 | BSP Component mx66uw1g45g    | 1.1.0
 | BSP Component rk050hr18      | 1.0.1
-| STM32 Camera Middleware      | 1.5.1
+| STM32 Camera Middleware      | 2.0.0
 | Azure RTOS USBX for STM32    | 6.4.0_rel / ST modified 251022
 | Azure RTOS Threadx for STM32 | 6.4.0_rel / ST modified 250822
-| STM32 ISP Library            | 2.0.0
-| ISP IQTune application       | 2.0.0
+| STM32 ISP Library            | 2.1.0
+| ISP IQTune application       | 2.1.0

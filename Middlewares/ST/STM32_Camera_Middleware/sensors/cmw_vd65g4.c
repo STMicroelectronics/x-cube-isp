@@ -24,7 +24,11 @@
 #include <string.h>
 #include "vd55g1.h"
 #include "cmw_camera.h"
+#include "cmw_utils.h"
 #include "cmw_io.h"
+#if !defined (CMW_USE_WITHOUT_ISP)
+#include "isp_param_conf.h"
+#endif
 
 #define VD65G4_CHIP_ID 0x53354733
 
@@ -182,8 +186,9 @@ static void VD65G4_Log(struct VD55G1_Ctx *ctx, int lvl, const char *format, va_l
   * @param  pInfo pointer to sensor info structure
   * @retval Component status
   */
-static int32_t CMW_VD65G4_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
+static int32_t CMW_VD65G4_GetSensorInfo(void *io_ctx, CMW_Sensor_Info_t *info)
 {
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
   uint32_t again_min_mdB, again_max_mdB;
   uint32_t dgain_min_mdB, dgain_max_mdB;
   uint32_t exposure_min, exposure_max;
@@ -204,30 +209,30 @@ static int32_t CMW_VD65G4_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
     return CMW_ERROR_WRONG_PARAM;
   }
 
-  /* Return isp bayer pattern info */
-  switch (((CMW_VD65G4_t *)io_ctx)->ctx_driver.bayer)
+  /* Return bayer pattern info */
+  switch (vd65g4_ctx->ctx_driver.bayer)
   {
     case VD55G1_BAYER_NONE:
-      info->bayer_pattern = ISP_DEMOS_TYPE_MONO;
+      info->bayer_pattern = CMW_BAYER_PATTERN_MONO;
       break;
     case VD55G1_BAYER_RGGB:
-      info->bayer_pattern = ISP_DEMOS_TYPE_RGGB;
+      info->bayer_pattern = CMW_BAYER_PATTERN_RGGB;
       break;
     case VD55G1_BAYER_GRBG:
-      info->bayer_pattern = ISP_DEMOS_TYPE_GRBG;
+      info->bayer_pattern = CMW_BAYER_PATTERN_GRBG;
       break;
     case VD55G1_BAYER_GBRG:
-      info->bayer_pattern = ISP_DEMOS_TYPE_GBRG;
+      info->bayer_pattern = CMW_BAYER_PATTERN_GBRG;
       break;
     case VD55G1_BAYER_BGGR:
-      info->bayer_pattern = ISP_DEMOS_TYPE_BGGR;
+      info->bayer_pattern = CMW_BAYER_PATTERN_BGGR;
       break;
     default:
       return CMW_ERROR_WRONG_PARAM;
   }
 
   /* Color depth derives from the current driver configuration */
-  info->color_depth = ((CMW_VD65G4_t *)io_ctx)->ctx_driver.ctx.config_save.pixel_depth;
+  info->color_depth = vd65g4_ctx->ctx_driver.ctx.config_save.pixel_depth;
 
   /* Return the default full resolution */
   info->width = VD55G1_MAX_WIDTH;
@@ -243,7 +248,7 @@ static int32_t CMW_VD65G4_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
   info->gain_max = again_max_mdB + dgain_max_mdB;
   info->again_max = again_max_mdB;
 
-  ret = VD55G1_GetExposureRegRange(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, &exposure_min, &exposure_max);
+  ret = VD55G1_GetExposureRegRange(&vd65g4_ctx->ctx_driver, &exposure_min, &exposure_max);
   if (ret)
     return ret;
 
@@ -252,6 +257,18 @@ static int32_t CMW_VD65G4_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
 
   return CMW_ERROR_NONE;
 }
+
+static int32_t CMW_VD65G4_GetIspDecimationRatio(void *io_ctx, int32_t *ratio_h, int32_t *ratio_v)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD65G4_t *ctx = (CMW_VD65G4_t *) io_ctx;
+
+  return CMW_UTILS_GetIspDecimationRatio_WithIsp(&ctx->hIsp, ratio_h, ratio_v);
+#else
+  return CMW_UTILS_GetIspDecimationRatio_NoIsp(ratio_h, ratio_v);
+#endif
+}
+
 static int CMW_VD65G4_GetResType(uint32_t width, uint32_t height, VD55G1_Res_t *res)
 {
   if (width == 320 && height == 240)
@@ -274,6 +291,7 @@ static int CMW_VD65G4_GetResType(uint32_t width, uint32_t height, VD55G1_Res_t *
   {
     return CMW_ERROR_WRONG_PARAM;
   }
+
   return 0;
 }
 
@@ -301,8 +319,9 @@ static VD55G1_MirrorFlip_t CMW_VD65G4_getMirrorFlipConfig(int32_t Config)
   return ret;
 }
 
-static int32_t CMW_VD65G4_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
+static int32_t CMW_VD65G4_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor, void *p_appliHelpers_ISP)
 {
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
   VD55G1_Config_t config = { 0 };
   CMW_VD65G4_config_t *sensor_config;
   int ret;
@@ -314,12 +333,9 @@ static int32_t CMW_VD65G4_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
   }
 
   sensor_config = (CMW_VD65G4_config_t *)(initSensor->sensor_config);
-  if (sensor_config == NULL)
-  {
-    return CMW_ERROR_WRONG_PARAM;
-  }
+  assert(sensor_config != NULL);
 
-  if (((CMW_VD65G4_t *)io_ctx)->IsInitialized)
+  if (vd65g4_ctx->IsInitialized)
   {
     return CMW_ERROR_NONE;
   }
@@ -364,88 +380,174 @@ static int32_t CMW_VD65G4_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
     config.gpio_ctrl[i] = VD55G1_GPIO_GPIO_IN;
   }
 
-  ret = VD55G1_Init(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, &config);
+  ret = VD55G1_Init(&vd65g4_ctx->ctx_driver, &config);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  if (((CMW_VD65G4_t *)io_ctx)->ctx_driver.bayer == VD55G1_BAYER_NONE)
+  if (vd65g4_ctx->ctx_driver.bayer == VD55G1_BAYER_NONE)
   {
-    VD55G1_DeInit(&((CMW_VD65G4_t *)io_ctx)->ctx_driver);
+    VD55G1_DeInit(&vd65g4_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ((CMW_VD65G4_t *)io_ctx)->IsInitialized = 1;
+  vd65g4_ctx->IsInitialized = 1;
+
+#if !defined (CMW_USE_WITHOUT_ISP)
+  /* Statistic area is provided with null value so that it force the ISP Library to get the statistic
+    * area information from the tuning file.
+    */
+  (void) ISP_IQParamCacheInit; /* unused */
+  ret = ISP_Init(&vd65g4_ctx->hIsp, vd65g4_ctx->hdcmipp, 0, (ISP_AppliHelpersTypeDef *)p_appliHelpers_ISP, &ISP_IQParamCacheInit_VD65G4);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = ISP_SetAEConvergenceSpeed(&vd65g4_ctx->hIsp, ISP_AE_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+
+  ret = ISP_SetAWBConvergenceSpeed(&vd65g4_ctx->hIsp, ISP_AWB_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+#endif
+
   return CMW_ERROR_NONE;
 }
 
-void CMW_VD65G4_SetDefaultSensorValues(CMW_VD65G4_config_t *vd65g4_config)
+void CMW_VD65G4_SetDefaultSensorValues(void *sensor_config)
 {
-  assert(vd65g4_config != NULL);
+  assert(sensor_config != NULL);
+  CMW_VD65G4_config_t *vd65g4_config = (CMW_VD65G4_config_t *)sensor_config;
   vd65g4_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
   vd65g4_config->CSI_PHYBitrate = VD55G1_DEFAULT_DATARATE;
 }
 static int32_t CMW_VD65G4_Start(void *io_ctx)
 {
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
-  ret = VD55G1_Start(&((CMW_VD65G4_t *)io_ctx)->ctx_driver);
-  if (ret)
+
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_Start(&vd65g4_ctx->hIsp);
+  if (ret != ISP_OK)
   {
-    VD55G1_DeInit(&((CMW_VD65G4_t *)io_ctx)->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
+#endif
+
+  ret = VD55G1_Start(&vd65g4_ctx->ctx_driver);
+  if (ret)
+  {
+    VD55G1_DeInit(&vd65g4_ctx->ctx_driver);
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
+}
+
+static int32_t CMW_VD65G4_Run(void *io_ctx)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
+  int ret;
+
+  ret = ISP_BackgroundProcess(&vd65g4_ctx->hIsp);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+#endif
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD65G4_Stop(void *io_ctx)
 {
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD55G1_Stop(&((CMW_VD65G4_t *)io_ctx)->ctx_driver);
+  ret = VD55G1_Stop(&vd65g4_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD65G4_DeInit(void *io_ctx)
 {
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD55G1_Stop(&((CMW_VD65G4_t *)io_ctx)->ctx_driver);
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_DeInit(&vd65g4_ctx->hIsp);
+  if (ret)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+#endif
+
+  ret = VD55G1_DeInit(&vd65g4_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ret = VD55G1_DeInit(&((CMW_VD65G4_t *)io_ctx)->ctx_driver);
-  if (ret)
-  {
-    return CMW_ERROR_PERIPH_FAILURE;
-  }
+  vd65g4_ctx->IsInitialized = 0;
 
-  ((CMW_VD65G4_t *)io_ctx)->IsInitialized = 0;
   return CMW_ERROR_NONE;
+}
+
+static void CMW_VD65G4_VsyncEventCallback(void *io_ctx, uint32_t pipe)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  /* Update the ISP frame counter and call its statistics handler */
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
+
+  switch (pipe)
+  {
+    case DCMIPP_PIPE0 :
+      ISP_IncDumpFrameId(&vd65g4_ctx->hIsp);
+      break;
+    case DCMIPP_PIPE1 :
+      ISP_IncMainFrameId(&vd65g4_ctx->hIsp);
+      ISP_GatherStatistics(&vd65g4_ctx->hIsp);
+      break;
+    case DCMIPP_PIPE2 :
+      ISP_IncAncillaryFrameId(&vd65g4_ctx->hIsp);
+      break;
+  }
+#endif
+}
+
+static void CMW_VD65G4_FrameEventCallback(void *io_ctx, uint32_t pipe)
+{
 }
 
 static int32_t CMW_VD65G4_MirrorFlipConfig(void *io_ctx, uint32_t Config)
 {
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
   int32_t ret = CMW_ERROR_NONE;
 
   switch (Config) {
     case CMW_MIRRORFLIP_NONE:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, VD55G1_MIRROR_FLIP_NONE);
+      ret = VD55G1_SetFlipMirrorMode(&vd65g4_ctx->ctx_driver, VD55G1_MIRROR_FLIP_NONE);
       break;
     case CMW_MIRRORFLIP_FLIP:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, VD55G1_FLIP);
+      ret = VD55G1_SetFlipMirrorMode(&vd65g4_ctx->ctx_driver, VD55G1_FLIP);
       break;
     case CMW_MIRRORFLIP_MIRROR:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, VD55G1_MIRROR);
+      ret = VD55G1_SetFlipMirrorMode(&vd65g4_ctx->ctx_driver, VD55G1_MIRROR);
       break;
     case CMW_MIRRORFLIP_FLIP_MIRROR:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, VD55G1_MIRROR_FLIP);
+      ret = VD55G1_SetFlipMirrorMode(&vd65g4_ctx->ctx_driver, VD55G1_MIRROR_FLIP);
       break;
     default:
       ret = CMW_ERROR_PERIPH_FAILURE;
@@ -454,7 +556,7 @@ static int32_t CMW_VD65G4_MirrorFlipConfig(void *io_ctx, uint32_t Config)
   return ret;
 }
 
-int32_t CMW_VD65G4_SetGain(void *io_ctx, int32_t gain)
+static int32_t CMW_VD65G4_SetGain(void *io_ctx, int32_t gain)
 {
   CMW_VD65G4_t *ctx = (CMW_VD65G4_t *)io_ctx;
   uint32_t again_min_mdB = (uint32_t)(LINEAR_TO_MDECIBEL(32.0 / (32.0 - (double)VD55G1_ANALOG_GAIN_MIN)) + 0.5);
@@ -506,30 +608,87 @@ int32_t CMW_VD65G4_SetGain(void *io_ctx, int32_t gain)
   return 0;
 }
 
-int32_t CMW_VD65G4_SetExposure(void *io_ctx, int32_t exposure)
+static int32_t CMW_VD65G4_SetExposure(void *io_ctx, int32_t exposure)
 {
-  return VD55G1_SetExposureTime(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, exposure);
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
+
+  return VD55G1_SetExposureTime(&vd65g4_ctx->ctx_driver, exposure);
 }
 
-int32_t CMW_VD65G4_SetExposureMode(void *io_ctx, int32_t mode)
+static int32_t CMW_VD65G4_SetExposureMode(void *io_ctx, int32_t mode)
 {
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
   int ret = -1;
 
   switch (mode)
   {
     case CMW_EXPOSUREMODE_MANUAL:
-      ret = VD55G1_SetExposureMode(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, VD55G1_EXPOSURE_MODE_MANUAL);
+      ret = VD55G1_SetExposureMode(&vd65g4_ctx->ctx_driver, VD55G1_EXPOSURE_MODE_MANUAL);
       break;
     case CMW_EXPOSUREMODE_AUTOFREEZE:
-      ret = VD55G1_SetExposureMode(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, VD55G1_EXPOSURE_MODE_FREEZE);
+      ret = VD55G1_SetExposureMode(&vd65g4_ctx->ctx_driver, VD55G1_EXPOSURE_MODE_FREEZE);
       break;
     case CMW_EXPOSUREMODE_AUTO:
     default:
-      ret = VD55G1_SetExposureMode(&((CMW_VD65G4_t *)io_ctx)->ctx_driver, VD55G1_EXPOSURE_MODE_AUTO);
+      ret = VD55G1_SetExposureMode(&vd65g4_ctx->ctx_driver, VD55G1_EXPOSURE_MODE_AUTO);
       break;
   }
 
   return (ret == 0) ? CMW_ERROR_NONE : CMW_ERROR_UNKNOWN_FAILURE;
+}
+
+/**
+  * @brief  Set the sensor white balance mode
+  * @param  io_ctx  pointer to component object
+  * @param  Automatic automatic mode enable/disable
+  * @param  RefColorTemp color temperature if automatic mode is disabled
+  * @retval Component status
+  */
+static int32_t CMW_VD65G4_SetWBRefMode(void *io_ctx, uint8_t Automatic, uint32_t RefColorTemp)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
+  int ret = CMW_ERROR_NONE;
+
+  ret = ISP_SetWBRefMode(&vd65g4_ctx->hIsp, Automatic, RefColorTemp);
+  if (ret)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
+}
+
+/**
+  * @brief  List the sensor white balance modes
+  * @param  io_ctx  pointer to component object
+  * @param  RefColorTemp color temperature list
+  * @param  array_size number of entries available in RefColorTemp
+  * @retval Component status
+  */
+static int32_t CMW_VD65G4_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[], uint32_t array_size)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)io_ctx;
+  int ret = CMW_ERROR_NONE;
+
+  assert(array_size >= CMW_CAMERA_NB_WB_REF_MODES);
+
+  ret = ISP_ListWBRefModes(&vd65g4_ctx->hIsp, RefColorTemp);
+  if (ret)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
 }
 
 static int32_t VD65G4_RegisterBusIO(CMW_VD65G4_t *io_ctx)
@@ -572,7 +731,7 @@ static void CMW_VD65G4_PowerOn(CMW_VD65G4_t *io_ctx)
   io_ctx->Delay(20); /* NRST de-asserted during 20ms */
 }
 
-int CMW_VD65G4_Probe(CMW_VD65G4_t *io_ctx, CMW_Sensor_if_t *vd65g4_if)
+static int CMW_VD65G4_Probe(CMW_VD65G4_t *io_ctx, CMW_Sensor_if_t *vd65g4_if)
 {
   int ret = CMW_ERROR_NONE;
   uint32_t id;
@@ -607,14 +766,126 @@ int CMW_VD65G4_Probe(CMW_VD65G4_t *io_ctx, CMW_Sensor_if_t *vd65g4_if)
   }
 
   memset(vd65g4_if, 0, sizeof(*vd65g4_if));
-  vd65g4_if->Init = CMW_VD65G4_Init;
   vd65g4_if->DeInit = CMW_VD65G4_DeInit;
+  vd65g4_if->Run = CMW_VD65G4_Run;
+  vd65g4_if->VsyncEventCallback = CMW_VD65G4_VsyncEventCallback;
+  vd65g4_if->FrameEventCallback = CMW_VD65G4_FrameEventCallback;
   vd65g4_if->Start = CMW_VD65G4_Start;
   vd65g4_if->Stop = CMW_VD65G4_Stop;
   vd65g4_if->SetMirrorFlip = CMW_VD65G4_MirrorFlipConfig;
   vd65g4_if->SetGain = CMW_VD65G4_SetGain;
   vd65g4_if->SetExposure = CMW_VD65G4_SetExposure;
   vd65g4_if->SetExposureMode = CMW_VD65G4_SetExposureMode;
+  vd65g4_if->SetWBRefMode = CMW_VD65G4_SetWBRefMode;
+  vd65g4_if->ListWBRefModes = CMW_VD65G4_ListWBRefModes;
   vd65g4_if->GetSensorInfo = CMW_VD65G4_GetSensorInfo;
+  vd65g4_if->GetIspDecimationRatio = CMW_VD65G4_GetIspDecimationRatio;
+
   return ret;
+}
+
+static void CMW_VD65G4_ShutdownPin(int value)
+{
+  HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void CMW_VD65G4_EnablePin(int value)
+{
+  HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+int32_t CMW_CAMERA_VD65G4_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                              CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP)
+{
+  int32_t ret = CMW_ERROR_NONE;
+  DCMIPP_CSI_ConfTypeDef csi_conf = { 0 };
+  DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe_conf = { 0 };
+  uint32_t dt_format = 0;
+  uint32_t dt = 0;
+  CMW_VD65G4_config_t default_sensor_config;
+  CMW_VD65G4_config_t *sensor_config;
+  CMW_VD65G4_t *vd65g4_ctx = (CMW_VD65G4_t *)sensor_ctx;
+
+  memset(vd65g4_ctx, 0, sizeof(*vd65g4_ctx));
+  vd65g4_ctx->Address     = CAMERA_VD65G4_ADDRESS;
+  vd65g4_ctx->Init        = CMW_I2C_INIT;
+  vd65g4_ctx->DeInit      = CMW_I2C_DEINIT;
+  vd65g4_ctx->WriteReg    = CMW_I2C_WRITEREG16;
+  vd65g4_ctx->ReadReg     = CMW_I2C_READREG16;
+  vd65g4_ctx->Delay       = HAL_Delay;
+  vd65g4_ctx->ShutdownPin = CMW_VD65G4_ShutdownPin;
+  vd65g4_ctx->EnablePin   = CMW_VD65G4_EnablePin;
+  vd65g4_ctx->hdcmipp     = hdcmipp;
+
+  ret = CMW_VD65G4_Probe(vd65g4_ctx, camera_drv);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  /* Special case: when resolution is not specified take the full sensor resolution */
+  if ((initSensors_params->width == 0U) || (initSensors_params->height == 0U))
+  {
+    initSensors_params->width = VD55G1_MAX_WIDTH;
+    initSensors_params->height = VD55G1_MAX_HEIGHT;
+  }
+
+  CMW_VD65G4_SetDefaultSensorValues(&default_sensor_config);
+  initSensors_params->sensor_config = initSensors_params->sensor_config ? initSensors_params->sensor_config : &default_sensor_config;
+  sensor_config = (CMW_VD65G4_config_t*)(initSensors_params->sensor_config);
+
+  csi_conf.NumberOfLanes = DCMIPP_CSI_ONE_DATA_LANE;
+  csi_conf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
+  csi_conf.PHYBitrate = DCMIPP_CSI_PHY_BT_800;
+  ret = HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csi_conf);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  switch (sensor_config->pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_RAW8:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP8;
+      dt = DCMIPP_DT_RAW8;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW10:
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP10;
+      dt = DCMIPP_DT_RAW10;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = HAL_DCMIPP_CSI_SetVCConfig(hdcmipp, DCMIPP_VIRTUAL_CHANNEL0, dt_format);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  csi_pipe_conf.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+  csi_pipe_conf.DataTypeIDA = dt;
+  csi_pipe_conf.DataTypeIDB = 0U;
+  /* Pre-initialize CSI config for all the pipes */
+  for (uint32_t i = DCMIPP_PIPE0; i <= DCMIPP_PIPE2; i++)
+  {
+    ret = HAL_DCMIPP_CSI_PIPE_SetConfig(hdcmipp, i, &csi_pipe_conf);
+    if (ret != HAL_OK)
+    {
+      return CMW_ERROR_PERIPH_FAILURE;
+    }
+  }
+
+  ret = CMW_VD65G4_Init(vd65g4_ctx, initSensors_params, p_appliHelpers_ISP);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
 }

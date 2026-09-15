@@ -24,6 +24,7 @@
 #include <string.h>
 #include "vd55g1.h"
 #include "cmw_camera.h"
+#include "cmw_utils.h"
 #include "cmw_io.h"
 
 #define VD55G1_CHIP_ID 0x53354731
@@ -184,8 +185,9 @@ static void VD55G1_Log(struct VD55G1_Ctx *ctx, int lvl, const char *format, va_l
   * @param  pInfo pointer to sensor info structure
   * @retval Component status
   */
-static int32_t CMW_VD55G1_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
+static int32_t CMW_VD55G1_GetSensorInfo(void *io_ctx, CMW_Sensor_Info_t *info)
 {
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
   uint32_t again_min_mdB, again_max_mdB;
   uint32_t dgain_min_mdB, dgain_max_mdB;
   uint32_t exposure_min, exposure_max;
@@ -205,8 +207,8 @@ static int32_t CMW_VD55G1_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
     return CMW_ERROR_WRONG_PARAM;
   }
 
-  info->bayer_pattern = ISP_DEMOS_TYPE_MONO;
-  info->color_depth = ((CMW_VD55G1_t *)io_ctx)->ctx_driver.ctx.config_save.pixel_depth;
+  info->bayer_pattern = CMW_BAYER_PATTERN_MONO;
+  info->color_depth = vd55g1_ctx->ctx_driver.ctx.config_save.pixel_depth;
   info->width = VD55G1_MAX_WIDTH;
   info->height = VD55G1_MAX_HEIGHT;
 
@@ -220,7 +222,7 @@ static int32_t CMW_VD55G1_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
   info->gain_max = again_max_mdB + dgain_max_mdB;
   info->again_max = again_max_mdB;
 
-  ret = VD55G1_GetExposureRegRange(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, &exposure_min, &exposure_max);
+  ret = VD55G1_GetExposureRegRange(&vd55g1_ctx->ctx_driver, &exposure_min, &exposure_max);
   if (ret)
     return ret;
 
@@ -228,6 +230,11 @@ static int32_t CMW_VD55G1_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *inf
   info->exposure_max = exposure_max;
 
   return CMW_ERROR_NONE;
+}
+
+static int32_t CMW_VD55G1_GetIspDecimationRatio(void *io_ctx, int32_t *ratio_h, int32_t *ratio_v)
+{
+  return CMW_UTILS_GetIspDecimationRatio_NoIsp(ratio_h, ratio_v);
 }
 
 static int CMW_VD55G1_GetResType(uint32_t width, uint32_t height, VD55G1_Res_t *res)
@@ -252,6 +259,7 @@ static int CMW_VD55G1_GetResType(uint32_t width, uint32_t height, VD55G1_Res_t *
   {
     return CMW_ERROR_WRONG_PARAM;
   }
+
   return 0;
 }
 
@@ -281,19 +289,17 @@ static VD55G1_MirrorFlip_t CMW_VD55G1_getMirrorFlipConfig(int32_t Config)
 
 static int32_t CMW_VD55G1_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
 {
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
   VD55G1_Config_t config = { 0 };
   int ret;
   int i;
   CMW_VD55G1_config_t *sensor_config;
   sensor_config = (CMW_VD55G1_config_t*)(initSensor->sensor_config);
-  if (sensor_config == NULL)
-  {
-    return CMW_ERROR_WRONG_PARAM;
-  }
+  assert(sensor_config != NULL);
 
   assert(initSensor != NULL);
 
-  if (((CMW_VD55G1_t *)io_ctx)->IsInitialized)
+  if (vd55g1_ctx->IsInitialized)
   {
     return CMW_ERROR_NONE;
   }
@@ -338,82 +344,86 @@ static int32_t CMW_VD55G1_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
     config.gpio_ctrl[i] = VD55G1_GPIO_GPIO_IN;
   }
 
-  ret = VD55G1_Init(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, &config);
+  ret = VD55G1_Init(&vd55g1_ctx->ctx_driver, &config);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ((CMW_VD55G1_t *)io_ctx)->IsInitialized = 1;
+  vd55g1_ctx->IsInitialized = 1;
+
   return CMW_ERROR_NONE;
 }
 
-void CMW_VD55G1_SetDefaultSensorValues( CMW_VD55G1_config_t *vd55g1_config)
+void CMW_VD55G1_SetDefaultSensorValues(void *sensor_config)
 {
-  assert(vd55g1_config != NULL);
+  assert(sensor_config != NULL);
+  CMW_VD55G1_config_t *vd55g1_config = (CMW_VD55G1_config_t *)sensor_config;
   vd55g1_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
   vd55g1_config->CSI_PHYBitrate = VD55G1_DEFAULT_DATARATE;
 }
 
 static int32_t CMW_VD55G1_Start(void *io_ctx)
 {
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
-  ret = VD55G1_Start(&((CMW_VD55G1_t *)io_ctx)->ctx_driver);
-  if (ret) {
-    VD55G1_DeInit(&((CMW_VD55G1_t *)io_ctx)->ctx_driver);
+  ret = VD55G1_Start(&vd55g1_ctx->ctx_driver);
+  if (ret)
+  {
+    VD55G1_DeInit(&vd55g1_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD55G1_Stop(void *io_ctx)
 {
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD55G1_Stop(&((CMW_VD55G1_t *)io_ctx)->ctx_driver);
+  ret = VD55G1_Stop(&vd55g1_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD55G1_DeInit(void *io_ctx)
 {
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD55G1_Stop(&((CMW_VD55G1_t *)io_ctx)->ctx_driver);
+  ret = VD55G1_DeInit(&vd55g1_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ret = VD55G1_DeInit(&((CMW_VD55G1_t *)io_ctx)->ctx_driver);
-  if (ret)
-  {
-    return CMW_ERROR_PERIPH_FAILURE;
-  }
+  vd55g1_ctx->IsInitialized = 0;
 
-  ((CMW_VD55G1_t *)io_ctx)->IsInitialized = 0;
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD55G1_MirrorFlipConfig(void *io_ctx, uint32_t Config)
 {
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
   int32_t ret = CMW_ERROR_NONE;
 
   switch (Config) {
     case CMW_MIRRORFLIP_NONE:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, VD55G1_MIRROR_FLIP_NONE);
+      ret = VD55G1_SetFlipMirrorMode(&vd55g1_ctx->ctx_driver, VD55G1_MIRROR_FLIP_NONE);
       break;
     case CMW_MIRRORFLIP_FLIP:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, VD55G1_FLIP);
+      ret = VD55G1_SetFlipMirrorMode(&vd55g1_ctx->ctx_driver, VD55G1_FLIP);
       break;
     case CMW_MIRRORFLIP_MIRROR:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, VD55G1_MIRROR);
+      ret = VD55G1_SetFlipMirrorMode(&vd55g1_ctx->ctx_driver, VD55G1_MIRROR);
       break;
     case CMW_MIRRORFLIP_FLIP_MIRROR:
-      ret = VD55G1_SetFlipMirrorMode(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, VD55G1_MIRROR_FLIP);
+      ret = VD55G1_SetFlipMirrorMode(&vd55g1_ctx->ctx_driver, VD55G1_MIRROR_FLIP);
       break;
     default:
       ret = CMW_ERROR_PERIPH_FAILURE;
@@ -422,7 +432,7 @@ static int32_t CMW_VD55G1_MirrorFlipConfig(void *io_ctx, uint32_t Config)
   return ret;
 }
 
-int32_t CMW_VD55G1_SetGain(void *io_ctx, int32_t gain)
+static int32_t CMW_VD55G1_SetGain(void *io_ctx, int32_t gain)
 {
   CMW_VD55G1_t *ctx = (CMW_VD55G1_t *)io_ctx;
   uint32_t again_min_mdB = (uint32_t)(LINEAR_TO_MDECIBEL(32.0 / (32.0 - (double)VD55G1_ANALOG_GAIN_MIN)) + 0.5);
@@ -475,26 +485,29 @@ int32_t CMW_VD55G1_SetGain(void *io_ctx, int32_t gain)
   return 0;
 }
 
-int32_t CMW_VD55G1_SetExposure(void *io_ctx, int32_t exposure)
+static int32_t CMW_VD55G1_SetExposure(void *io_ctx, int32_t exposure)
 {
-  return VD55G1_SetExposureTime(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, exposure);
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
+
+  return VD55G1_SetExposureTime(&vd55g1_ctx->ctx_driver, exposure);
 }
 
-int32_t CMW_VD55G1_SetExposureMode(void *io_ctx, int32_t mode)
+static int32_t CMW_VD55G1_SetExposureMode(void *io_ctx, int32_t mode)
 {
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)io_ctx;
   int ret = -1;
 
   switch (mode)
   {
     case CMW_EXPOSUREMODE_MANUAL:
-      ret = VD55G1_SetExposureMode(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, VD55G1_EXPOSURE_MODE_MANUAL);
+      ret = VD55G1_SetExposureMode(&vd55g1_ctx->ctx_driver, VD55G1_EXPOSURE_MODE_MANUAL);
       break;
     case CMW_EXPOSUREMODE_AUTOFREEZE:
-      ret = VD55G1_SetExposureMode(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, VD55G1_EXPOSURE_MODE_FREEZE);
+      ret = VD55G1_SetExposureMode(&vd55g1_ctx->ctx_driver, VD55G1_EXPOSURE_MODE_FREEZE);
       break;
     case CMW_EXPOSUREMODE_AUTO:
     default:
-      ret = VD55G1_SetExposureMode(&((CMW_VD55G1_t *)io_ctx)->ctx_driver, VD55G1_EXPOSURE_MODE_AUTO);
+      ret = VD55G1_SetExposureMode(&vd55g1_ctx->ctx_driver, VD55G1_EXPOSURE_MODE_AUTO);
       break;
   }
 
@@ -541,7 +554,7 @@ static void CMW_VD55G1_PowerOn(CMW_VD55G1_t *io_ctx)
   io_ctx->Delay(20); /* NRST de-asserted during 20ms */
 }
 
-int CMW_VD55G1_Probe(CMW_VD55G1_t *io_ctx, CMW_Sensor_if_t *vd55g1_if)
+static int CMW_VD55G1_Probe(CMW_VD55G1_t *io_ctx, CMW_Sensor_if_t *vd55g1_if)
 {
   int ret = CMW_ERROR_NONE;
   uint32_t id;
@@ -576,7 +589,6 @@ int CMW_VD55G1_Probe(CMW_VD55G1_t *io_ctx, CMW_Sensor_if_t *vd55g1_if)
   }
 
   memset(vd55g1_if, 0, sizeof(*vd55g1_if));
-  vd55g1_if->Init = CMW_VD55G1_Init;
   vd55g1_if->DeInit = CMW_VD55G1_DeInit;
   vd55g1_if->Start = CMW_VD55G1_Start;
   vd55g1_if->Stop = CMW_VD55G1_Stop;
@@ -585,5 +597,112 @@ int CMW_VD55G1_Probe(CMW_VD55G1_t *io_ctx, CMW_Sensor_if_t *vd55g1_if)
   vd55g1_if->SetExposure = CMW_VD55G1_SetExposure;
   vd55g1_if->SetExposureMode = CMW_VD55G1_SetExposureMode;
   vd55g1_if->GetSensorInfo = CMW_VD55G1_GetSensorInfo;
+  vd55g1_if->GetIspDecimationRatio = CMW_VD55G1_GetIspDecimationRatio;
+
   return ret;
+}
+
+static void CMW_VD55G1_ShutdownPin(int value)
+{
+  HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void CMW_VD55G1_EnablePin(int value)
+{
+  HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+int32_t CMW_CAMERA_VD55G1_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                              CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP)
+{
+  int32_t ret = CMW_ERROR_NONE;
+  DCMIPP_CSI_ConfTypeDef csi_conf = { 0 };
+  DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe_conf = { 0 };
+  uint32_t dt_format = 0;
+  uint32_t dt = 0;
+  CMW_VD55G1_config_t default_sensor_config;
+  CMW_VD55G1_config_t *sensor_config;
+  CMW_VD55G1_t *vd55g1_ctx = (CMW_VD55G1_t *)sensor_ctx;
+
+  memset(vd55g1_ctx, 0, sizeof(*vd55g1_ctx));
+  vd55g1_ctx->Address     = CAMERA_VD55G1_ADDRESS;
+  vd55g1_ctx->Init        = CMW_I2C_INIT;
+  vd55g1_ctx->DeInit      = CMW_I2C_DEINIT;
+  vd55g1_ctx->WriteReg    = CMW_I2C_WRITEREG16;
+  vd55g1_ctx->ReadReg     = CMW_I2C_READREG16;
+  vd55g1_ctx->Delay       = HAL_Delay;
+  vd55g1_ctx->ShutdownPin = CMW_VD55G1_ShutdownPin;
+  vd55g1_ctx->EnablePin   = CMW_VD55G1_EnablePin;
+
+  ret = CMW_VD55G1_Probe(vd55g1_ctx, camera_drv);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  /* Special case: when resolution is not specified take the full sensor resolution */
+  if ((initSensors_params->width == 0) || (initSensors_params->height == 0))
+  {
+    initSensors_params->width = VD55G1_MAX_WIDTH;
+    initSensors_params->height = VD55G1_MAX_HEIGHT;
+  }
+
+  CMW_VD55G1_SetDefaultSensorValues(&default_sensor_config);
+  initSensors_params->sensor_config = initSensors_params->sensor_config ? initSensors_params->sensor_config : &default_sensor_config;
+  sensor_config = (CMW_VD55G1_config_t*) (initSensors_params->sensor_config);
+
+  csi_conf.NumberOfLanes = DCMIPP_CSI_ONE_DATA_LANE;
+  csi_conf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
+  csi_conf.PHYBitrate = DCMIPP_CSI_PHY_BT_800;
+  ret = HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csi_conf);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  switch (sensor_config->pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_RAW8:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP8;
+      dt = DCMIPP_DT_RAW8;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW10:
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP10;
+      dt = DCMIPP_DT_RAW10;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = HAL_DCMIPP_CSI_SetVCConfig(hdcmipp, DCMIPP_VIRTUAL_CHANNEL0, dt_format);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  csi_pipe_conf.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+  csi_pipe_conf.DataTypeIDA = dt;
+  csi_pipe_conf.DataTypeIDB = 0;
+  /* Pre-initialize CSI config for all the pipes */
+  for (uint32_t i = DCMIPP_PIPE0; i <= DCMIPP_PIPE2; i++)
+  {
+    ret = HAL_DCMIPP_CSI_PIPE_SetConfig(hdcmipp, i, &csi_pipe_conf);
+    if (ret != HAL_OK)
+    {
+      return CMW_ERROR_PERIPH_FAILURE;
+    }
+  }
+
+  ret = CMW_VD55G1_Init(vd55g1_ctx, initSensors_params);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
 }

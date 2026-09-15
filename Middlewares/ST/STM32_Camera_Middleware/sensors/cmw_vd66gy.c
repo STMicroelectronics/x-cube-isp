@@ -23,8 +23,9 @@
 #include <stddef.h>
 #include <string.h>
 #include "cmw_camera.h"
+#include "cmw_utils.h"
 #include "cmw_io.h"
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
 #include "isp_param_conf.h"
 #endif
 
@@ -204,6 +205,7 @@ static int CMW_VD66GY_GetResType(uint32_t width, uint32_t height, VD6G_Res_t *re
   {
     return CMW_ERROR_WRONG_PARAM;
   }
+
   return 0;
 }
 
@@ -231,19 +233,17 @@ static VD6G_MirrorFlip_t CMW_VD66GY_getMirrorFlipConfig(uint32_t Config)
   return ret;
 }
 
-static int32_t CMW_VD66GY_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
+static int32_t CMW_VD66GY_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor, void *p_appliHelpers_ISP)
 {
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   VD6G_Config_t config = { 0 };
   int ret;
   int i;
   CMW_VD66GY_config_t *sensor_config;
   sensor_config = (CMW_VD66GY_config_t*)(initSensor->sensor_config);
-  if (sensor_config == NULL)
-  {
-    return CMW_ERROR_WRONG_PARAM;
-  }
+  assert(sensor_config != NULL);
 
-  if (((CMW_VD66GY_t *)io_ctx)->IsInitialized)
+  if (vd66gy_ctx->IsInitialized)
   {
     return CMW_ERROR_NONE;
   }
@@ -290,100 +290,128 @@ static int32_t CMW_VD66GY_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
     config.gpio_ctrl[i] = VD6G_GPIO_GPIO_IN;
   }
 
-  ret = VD6G_Init(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, &config);
+  ret = VD6G_Init(&vd66gy_ctx->ctx_driver, &config);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  if (((CMW_VD66GY_t *)io_ctx)->ctx_driver.bayer == VD6G_BAYER_NONE)
+  if (vd66gy_ctx->ctx_driver.bayer == VD6G_BAYER_NONE)
   {
-    VD6G_DeInit(&((CMW_VD66GY_t *)io_ctx)->ctx_driver);
+    VD6G_DeInit(&vd66gy_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ((CMW_VD66GY_t *)io_ctx)->IsInitialized = 1;
+  vd66gy_ctx->IsInitialized = 1;
+
+#if !defined (CMW_USE_WITHOUT_ISP)
+  /* Statistic area is provided with null value so that it force the ISP Library to get the statistic
+    * area information from the tuning file.
+    */
+  (void) ISP_IQParamCacheInit; /* unused */
+  ret = ISP_Init(&vd66gy_ctx->hIsp, vd66gy_ctx->hdcmipp, 0, (ISP_AppliHelpersTypeDef *)p_appliHelpers_ISP, &ISP_IQParamCacheInit_VD66GY);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = ISP_SetAEConvergenceSpeed(&vd66gy_ctx->hIsp, ISP_AE_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+
+  ret = ISP_SetAWBConvergenceSpeed(&vd66gy_ctx->hIsp, ISP_AWB_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+#endif
+
   return CMW_ERROR_NONE;
 }
 
-void CMW_VD66GY_SetDefaultSensorValues(CMW_VD66GY_config_t *vd66gy_config)
+void CMW_VD66GY_SetDefaultSensorValues(void *sensor_config)
 {
-  assert(vd66gy_config != NULL);
+  assert(sensor_config != NULL);
+  CMW_VD66GY_config_t *vd66gy_config = (CMW_VD66GY_config_t *)sensor_config;
   vd66gy_config->line_len = 0;
   vd66gy_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
 }
 
 static int32_t CMW_VD66GY_Start(void *io_ctx)
 {
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
-  /* Statistic area is provided with null value so that it force the ISP Library to get the statistic
-   * area information from the tuning file.
-   */
-  (void) ISP_IQParamCacheInit; /* unused */
-  ret = ISP_Init(&((CMW_VD66GY_t *)io_ctx)->hIsp, ((CMW_VD66GY_t *)io_ctx)->hdcmipp, 0, &((CMW_VD66GY_t *)io_ctx)->appliHelpers, &ISP_IQParamCacheInit_VD66GY);
-  if (ret != ISP_OK)
-  {
-    return CMW_ERROR_COMPONENT_FAILURE;
-  }
-
-  ret = ISP_Start(&((CMW_VD66GY_t *)io_ctx)->hIsp);
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_Start(&vd66gy_ctx->hIsp);
   if (ret != ISP_OK)
   {
       return CMW_ERROR_PERIPH_FAILURE;
   }
 #endif
-  ret = VD6G_Start(&((CMW_VD66GY_t *)io_ctx)->ctx_driver);
+
+
+  ret = VD6G_Start(&vd66gy_ctx->ctx_driver);
   if (ret) {
-    VD6G_DeInit(&((CMW_VD66GY_t *)io_ctx)->ctx_driver);
+    VD6G_DeInit(&vd66gy_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD66GY_Run(void *io_ctx)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int ret;
-  ret = ISP_BackgroundProcess(&((CMW_VD66GY_t *)io_ctx)->hIsp);
+  ret = ISP_BackgroundProcess(&vd66gy_ctx->hIsp);
   if (ret != ISP_OK)
   {
       return CMW_ERROR_PERIPH_FAILURE;
   }
 #endif
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD66GY_Stop(void *io_ctx)
 {
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD6G_Stop(&((CMW_VD66GY_t *)io_ctx)->ctx_driver);
+  ret = VD6G_Stop(&vd66gy_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD66GY_DeInit(void *io_ctx)
 {
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD6G_Stop(&((CMW_VD66GY_t *)io_ctx)->ctx_driver);
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_DeInit(&vd66gy_ctx->hIsp);
+  if (ret)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+#endif
+
+  ret = VD6G_DeInit(&vd66gy_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ret = VD6G_DeInit(&((CMW_VD66GY_t *)io_ctx)->ctx_driver);
-  if (ret)
-  {
-    return CMW_ERROR_PERIPH_FAILURE;
-  }
+  vd66gy_ctx->IsInitialized = 0;
 
-  ((CMW_VD66GY_t *)io_ctx)->IsInitialized = 0;
   return CMW_ERROR_NONE;
 }
 
@@ -393,8 +421,9 @@ static int32_t CMW_VD66GY_DeInit(void *io_ctx)
   * @param  Gain Gain in mdB
   * @retval Component status
   */
-int32_t CMW_VD66GY_SetGain(void *io_ctx, int32_t gain)
+static int32_t CMW_VD66GY_SetGain(void *io_ctx, int32_t gain)
 {
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int32_t ret;
   uint8_t again_regmin, again_regmax;
   uint16_t dgain_regmin, dgain_regmax;
@@ -402,11 +431,11 @@ int32_t CMW_VD66GY_SetGain(void *io_ctx, int32_t gain)
   uint32_t dgain_min_mdB, dgain_max_mdB;
   double analog_linear_gain, digital_linear_gain;
 
-  ret = VD6G_GetAnalogGainRegRange(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, &again_regmin, &again_regmax);
+  ret = VD6G_GetAnalogGainRegRange(&vd66gy_ctx->ctx_driver, &again_regmin, &again_regmax);
   if (ret)
     return ret;
 
-  ret = VD6G_GetDigitalGainRegRange(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, &dgain_regmin, &dgain_regmax);
+  ret = VD6G_GetDigitalGainRegRange(&vd66gy_ctx->ctx_driver, &dgain_regmin, &dgain_regmax);
   if (ret)
     return ret;
 
@@ -432,11 +461,11 @@ int32_t CMW_VD66GY_SetGain(void *io_ctx, int32_t gain)
     digital_linear_gain = MDECIBEL_TO_LINEAR((double)(gain - again_max_mdB));
   }
 
-  ret = VD6G_SetAnalogGain(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, (int) (32 - (32 / analog_linear_gain)));
+  ret = VD6G_SetAnalogGain(&vd66gy_ctx->ctx_driver, (int) (32 - (32 / analog_linear_gain)));
   if (ret)
     return ret;
 
-  ret = VD6G_SetDigitalGain(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, FLOAT_TO_FP58(digital_linear_gain));
+  ret = VD6G_SetDigitalGain(&vd66gy_ctx->ctx_driver, FLOAT_TO_FP58(digital_linear_gain));
   if (ret)
     return ret;
 
@@ -449,9 +478,11 @@ int32_t CMW_VD66GY_SetGain(void *io_ctx, int32_t gain)
   * @param  Exposure Exposure in micro seconds
   * @retval Component status
   */
-int32_t CMW_VD66GY_SetExposure(void *io_ctx, int32_t exposure)
+static int32_t CMW_VD66GY_SetExposure(void *io_ctx, int32_t exposure)
 {
-  return VD6G_SetExposureTime(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, exposure);
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
+
+  return VD6G_SetExposureTime(&vd66gy_ctx->ctx_driver, exposure);
 }
 
 /**
@@ -460,21 +491,22 @@ int32_t CMW_VD66GY_SetExposure(void *io_ctx, int32_t exposure)
   * @param  Exposure Exposure mode
   * @retval Component status
   */
-int32_t CMW_VD66GY_SetExposureMode(void *io_ctx, int32_t mode)
+static int32_t CMW_VD66GY_SetExposureMode(void *io_ctx, int32_t mode)
 {
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int ret = -1;
 
   switch (mode)
   {
     case CMW_EXPOSUREMODE_MANUAL:
-      ret = VD6G_SetExposureMode(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, VD6G_EXPOSURE_MANUAL);
+      ret = VD6G_SetExposureMode(&vd66gy_ctx->ctx_driver, VD6G_EXPOSURE_MANUAL);
       break;
     case CMW_EXPOSUREMODE_AUTOFREEZE:
-      ret = VD6G_SetExposureMode(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, VD6G_EXPOSURE_FREEZE_AEALGO);
+      ret = VD6G_SetExposureMode(&vd66gy_ctx->ctx_driver, VD6G_EXPOSURE_FREEZE_AEALGO);
       break;
     case CMW_EXPOSUREMODE_AUTO:
     default:
-      ret = VD6G_SetExposureMode(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, VD6G_EXPOSURE_AUTO);
+      ret = VD6G_SetExposureMode(&vd66gy_ctx->ctx_driver, VD6G_EXPOSURE_AUTO);
       break;
   }
 
@@ -488,36 +520,51 @@ int32_t CMW_VD66GY_SetExposureMode(void *io_ctx, int32_t mode)
   * @param  RefColorTemp color temperature if automatic mode is disabled
   * @retval Component status
   */
-int32_t CMW_VD66GY_SetWBRefMode(void *io_ctx, uint8_t Automatic, uint32_t RefColorTemp)
+static int32_t CMW_VD66GY_SetWBRefMode(void *io_ctx, uint8_t Automatic, uint32_t RefColorTemp)
 {
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = ISP_SetWBRefMode(&((CMW_VD66GY_t *)io_ctx)->hIsp, Automatic, RefColorTemp);
+  ret = ISP_SetWBRefMode(&vd66gy_ctx->hIsp, Automatic, RefColorTemp);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
   return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
 }
 
 /**
   * @brief  List the sensor white balance modes
   * @param  io_ctx  pointer to component object
   * @param  RefColorTemp color temperature list
+  * @param  array_size number of entries available in RefColorTemp
   * @retval Component status
   */
-int32_t CMW_VD66GY_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[])
+static int32_t CMW_VD66GY_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[], uint32_t array_size)
 {
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = ISP_ListWBRefModes(&((CMW_VD66GY_t *)io_ctx)->hIsp, RefColorTemp);
+  assert(array_size >= CMW_CAMERA_NB_WB_REF_MODES);
+
+  ret = ISP_ListWBRefModes(&vd66gy_ctx->hIsp, RefColorTemp);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
   return CMW_ERROR_NONE;
+#else
+
+  return CMW_ERROR_FEATURE_NOT_SUPPORTED;
+#endif
 }
 
 /**
@@ -526,8 +573,9 @@ int32_t CMW_VD66GY_ListWBRefModes(void *io_ctx, uint32_t RefColorTemp[])
   * @param  pInfo pointer to sensor info structure
   * @retval Component status
   */
-int32_t CMW_VD66GY_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
+static int32_t CMW_VD66GY_GetSensorInfo(void *io_ctx, CMW_Sensor_Info_t *info)
 {
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   uint8_t again_regmin, again_regmax;
   uint16_t dgain_regmin, dgain_regmax;
   uint32_t again_min_mdB, again_max_mdB;
@@ -548,22 +596,38 @@ int32_t CMW_VD66GY_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
     return CMW_ERROR_WRONG_PARAM;
   }
 
-  /* Get isp bayer pattern info */
-  info->bayer_pattern = ((CMW_VD66GY_t *)io_ctx)->ctx_driver.bayer - 1;
+  /* Get bayer pattern info */
+  switch (vd66gy_ctx->ctx_driver.bayer)
+  {
+    case VD6G_BAYER_RGGB:
+      info->bayer_pattern = CMW_BAYER_PATTERN_RGGB;
+      break;
+    case VD6G_BAYER_GRBG:
+      info->bayer_pattern = CMW_BAYER_PATTERN_GRBG;
+      break;
+    case VD6G_BAYER_GBRG:
+      info->bayer_pattern = CMW_BAYER_PATTERN_GBRG;
+      break;
+    case VD6G_BAYER_BGGR:
+      info->bayer_pattern = CMW_BAYER_PATTERN_BGGR;
+      break;
+    default:
+      return CMW_ERROR_WRONG_PARAM;
+  }
 
   /* Color depth derives from the current driver configuration */
-  info->color_depth = ((CMW_VD66GY_t *)io_ctx)->ctx_driver.ctx.config_save.pixel_depth;
+  info->color_depth = vd66gy_ctx->ctx_driver.ctx.config_save.pixel_depth;
 
   /* Get resolution info */
   info->width = VD6G_MAX_WIDTH;
   info->height = VD6G_MAX_HEIGHT;
 
   /* Get gain range */
-  ret = VD6G_GetAnalogGainRegRange(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, &again_regmin, &again_regmax);
+  ret = VD6G_GetAnalogGainRegRange(&vd66gy_ctx->ctx_driver, &again_regmin, &again_regmax);
   if (ret)
     return ret;
 
-  ret = VD6G_GetDigitalGainRegRange(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, &dgain_regmin, &dgain_regmax);
+  ret = VD6G_GetDigitalGainRegRange(&vd66gy_ctx->ctx_driver, &dgain_regmin, &dgain_regmax);
   if (ret)
     return ret;
 
@@ -577,28 +641,40 @@ int32_t CMW_VD66GY_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
   info->again_max = again_max_mdB;
 
   /* Get exposure range */
-  ret = VD6G_GetExposureRegRange(&((CMW_VD66GY_t *)io_ctx)->ctx_driver, &info->exposure_min, &info->exposure_max);
+  ret = VD6G_GetExposureRegRange(&vd66gy_ctx->ctx_driver, &info->exposure_min, &info->exposure_max);
   if (ret)
     return ret;
 
   return CMW_ERROR_NONE;
 }
 
+static int32_t CMW_VD66GY_GetIspDecimationRatio(void *io_ctx, int32_t *ratio_h, int32_t *ratio_v)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD66GY_t *ctx = (CMW_VD66GY_t *) io_ctx;
+
+  return CMW_UTILS_GetIspDecimationRatio_WithIsp(&ctx->hIsp, ratio_h, ratio_v);
+#else
+  return CMW_UTILS_GetIspDecimationRatio_NoIsp(ratio_h, ratio_v);
+#endif
+}
+
 static void CMW_VD66GY_VsyncEventCallback(void *io_ctx, uint32_t pipe)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
   /* Update the ISP frame counter and call its statistics handler */
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)io_ctx;
   switch (pipe)
   {
     case DCMIPP_PIPE0 :
-      ISP_IncDumpFrameId(&((CMW_VD66GY_t *)io_ctx)->hIsp);
+      ISP_IncDumpFrameId(&vd66gy_ctx->hIsp);
       break;
     case DCMIPP_PIPE1 :
-      ISP_IncMainFrameId(&((CMW_VD66GY_t *)io_ctx)->hIsp);
-      ISP_GatherStatistics(&((CMW_VD66GY_t *)io_ctx)->hIsp);
+      ISP_IncMainFrameId(&vd66gy_ctx->hIsp);
+      ISP_GatherStatistics(&vd66gy_ctx->hIsp);
       break;
     case DCMIPP_PIPE2 :
-      ISP_IncAncillaryFrameId(&((CMW_VD66GY_t *)io_ctx)->hIsp);
+      ISP_IncAncillaryFrameId(&vd66gy_ctx->hIsp);
       break;
   }
 #endif
@@ -608,7 +684,7 @@ static void CMW_VD66GY_FrameEventCallback(void *io_ctx, uint32_t pipe)
 {
 }
 
-int32_t VD66GY_RegisterBusIO(CMW_VD66GY_t *io_ctx)
+static int32_t VD66GY_RegisterBusIO(CMW_VD66GY_t *io_ctx)
 {
   int ret;
 
@@ -623,7 +699,7 @@ int32_t VD66GY_RegisterBusIO(CMW_VD66GY_t *io_ctx)
   return ret;
 }
 
-int32_t VD66GY_ReadID(CMW_VD66GY_t *io_ctx, uint32_t *Id)
+static int32_t VD66GY_ReadID(CMW_VD66GY_t *io_ctx, uint32_t *Id)
 {
   uint16_t reg16;
   int32_t ret;
@@ -649,7 +725,7 @@ static void CMW_VD66GY_PowerOn(CMW_VD66GY_t *io_ctx)
   HAL_Delay(20);     /* NRST de-asserted during 20ms */
 }
 
-int CMW_VD66GY_Probe(CMW_VD66GY_t *io_ctx, CMW_Sensor_if_t *vd6g_if)
+static int CMW_VD66GY_Probe(CMW_VD66GY_t *io_ctx, CMW_Sensor_if_t *vd6g_if)
 {
   int ret = CMW_ERROR_NONE;
   uint32_t id;
@@ -684,7 +760,6 @@ int CMW_VD66GY_Probe(CMW_VD66GY_t *io_ctx, CMW_Sensor_if_t *vd6g_if)
   }
 
   memset(vd6g_if, 0, sizeof(*vd6g_if));
-  vd6g_if->Init = CMW_VD66GY_Init;
   vd6g_if->DeInit = CMW_VD66GY_DeInit;
   vd6g_if->Run = CMW_VD66GY_Run;
   vd6g_if->VsyncEventCallback = CMW_VD66GY_VsyncEventCallback;
@@ -697,5 +772,113 @@ int CMW_VD66GY_Probe(CMW_VD66GY_t *io_ctx, CMW_Sensor_if_t *vd6g_if)
   vd6g_if->SetWBRefMode = CMW_VD66GY_SetWBRefMode;
   vd6g_if->ListWBRefModes = CMW_VD66GY_ListWBRefModes;
   vd6g_if->GetSensorInfo = CMW_VD66GY_GetSensorInfo;
+  vd6g_if->GetIspDecimationRatio = CMW_VD66GY_GetIspDecimationRatio;
+
   return ret;
+}
+
+static void CMW_VD66GY_ShutdownPin(int value)
+{
+  HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void CMW_VD66GY_EnablePin(int value)
+{
+  HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+int32_t CMW_CAMERA_VD66GY_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                              CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP)
+{
+  int32_t ret = CMW_ERROR_NONE;
+  DCMIPP_CSI_ConfTypeDef csi_conf = { 0 };
+  DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe_conf = { 0 };
+  uint32_t dt_format = 0;
+  uint32_t dt = 0;
+  CMW_VD66GY_config_t default_sensor_config;
+  CMW_VD66GY_config_t *sensor_config;
+  CMW_VD66GY_t *vd66gy_ctx = (CMW_VD66GY_t *)sensor_ctx;
+
+  memset(vd66gy_ctx, 0, sizeof(*vd66gy_ctx));
+  vd66gy_ctx->Address     = CAMERA_VD66GY_ADDRESS;
+  vd66gy_ctx->Init        = CMW_I2C_INIT;
+  vd66gy_ctx->DeInit      = CMW_I2C_DEINIT;
+  vd66gy_ctx->ReadReg     = CMW_I2C_READREG16;
+  vd66gy_ctx->WriteReg    = CMW_I2C_WRITEREG16;
+  vd66gy_ctx->Delay       = HAL_Delay;
+  vd66gy_ctx->ShutdownPin = CMW_VD66GY_ShutdownPin;
+  vd66gy_ctx->EnablePin   = CMW_VD66GY_EnablePin;
+  vd66gy_ctx->hdcmipp     = hdcmipp;
+
+  ret = CMW_VD66GY_Probe(vd66gy_ctx, camera_drv);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  /* Special case: when resolution is not specified take the full sensor resolution */
+  if ((initSensors_params->width == 0) || (initSensors_params->height == 0))
+  {
+    initSensors_params->width = VD6G_MAX_WIDTH;
+    initSensors_params->height = VD6G_MAX_HEIGHT;
+  }
+
+  CMW_VD66GY_SetDefaultSensorValues(&default_sensor_config);
+  initSensors_params->sensor_config = initSensors_params->sensor_config ? initSensors_params->sensor_config : &default_sensor_config;
+  sensor_config = (CMW_VD66GY_config_t*) (initSensors_params->sensor_config);
+
+  csi_conf.NumberOfLanes = DCMIPP_CSI_TWO_DATA_LANES;
+  csi_conf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
+  csi_conf.PHYBitrate = DCMIPP_CSI_PHY_BT_800;
+  ret = HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csi_conf);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+ switch (sensor_config->pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_RAW8:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP8;
+      dt = DCMIPP_DT_RAW8;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW10:
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP10;
+      dt = DCMIPP_DT_RAW10;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = HAL_DCMIPP_CSI_SetVCConfig(hdcmipp, DCMIPP_VIRTUAL_CHANNEL0, dt_format);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  csi_pipe_conf.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+  csi_pipe_conf.DataTypeIDA = dt;
+  csi_pipe_conf.DataTypeIDB = 0;
+  /* Pre-initialize CSI config for all the pipes */
+  for (uint32_t i = DCMIPP_PIPE0; i <= DCMIPP_PIPE2; i++)
+  {
+    ret = HAL_DCMIPP_CSI_PIPE_SetConfig(hdcmipp, i, &csi_pipe_conf);
+    if (ret != HAL_OK)
+    {
+      return CMW_ERROR_PERIPH_FAILURE;
+    }
+  }
+
+  ret = CMW_VD66GY_Init(vd66gy_ctx, initSensors_params, p_appliHelpers_ISP);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
 }

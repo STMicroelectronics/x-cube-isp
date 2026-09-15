@@ -26,9 +26,78 @@ This driver provides a set of functions to manage:
 ::: {.col-sm-12 .col-lg-8}
 # Update History
 
+::: {.collapse}
+<input type="checkbox" id="collapse-section6" checked aria-hidden="true">
+<label for="collapse-section6" checked aria-hidden="true">__V1.4.1 / 31-July-2026__</label>
+<div>
+
+## Main Changes
+
+###  Fifth maintenance release of board drivers supporting **STM32N6570-DK board** (MB1939C)
+
+
+## Contents
+
+  - stm32n6570_discovery_xspi update:
+    - Fix XSPI_NOR_ResetMemory() to reset the memory in all modes without relying on context, and skip the WIP check during reset.
+
+## Known Limitations
+
+  - None
+
+## Dependencies
+
+  - ISP library v1.2.1
+
+## Notes
+
+
+*stm32n6570_discovery_conf_template.h* file must be copied in user application as *stm32n6570_discovery_conf.h* with optional configuration update
+
+
+\
+
+</div>
+:::
 
 ::: {.collapse}
-<input type="checkbox" id="collapse-section4" checked aria-hidden="true">
+<input type="checkbox" id="collapse-section5" aria-hidden="true">
+<label for="collapse-section5" checked aria-hidden="true">__V1.4.0 / 03-June-2026__</label>
+<div>
+
+## Main Changes
+
+###  Fourth maintenance release of board drivers supporting **STM32N6570-DK board** (MB1939C)
+
+
+## Contents
+
+  - stm32n6570_discovery_xspi update:
+    - Remove Delay inside DOPI SOPI functions .
+    - Adjust CSHT to feat with MX66 Tshsl timing.
+    - Fix BSP_XSPI_NOR_LeaveDeepPowerDown() to use ReleasePowerDown.
+
+## Known Limitations
+
+  - None
+
+## Dependencies
+
+  - ISP library v1.2.1
+
+## Notes
+
+
+*stm32n6570_discovery_conf_template.h* file must be copied in user application as *stm32n6570_discovery_conf.h* with optional configuration update
+
+
+\
+
+</div>
+:::
+
+::: {.collapse}
+<input type="checkbox" id="collapse-section4" aria-hidden="true">
 <label for="collapse-section4" checked aria-hidden="true">__V1.3.0 / 29-October-2025__</label>
 <div>
 

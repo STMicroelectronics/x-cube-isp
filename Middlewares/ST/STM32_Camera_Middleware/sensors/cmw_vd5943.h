@@ -23,22 +23,26 @@
 #endif
 
 #include <stdint.h>
+#include "cmw_camera.h"
 #include "cmw_sensors_if.h"
 #include "cmw_errno.h"
 #include "vd1943.h"
 #include "stm32n6xx_hal_dcmipp.h"
+#if !defined (CMW_USE_WITHOUT_ISP)
 #include "isp_api.h"
-#include "cmw_camera.h"
+#endif
 
-#define VD5943_CUT1_3_CHIP_ID   0x53393430
-#define VD5943_CUT1_4_CHIP_ID   0x53393431
+#define VD5943_CUT1_3_CHIP_ID    0x53393430
+#define VD5943_CUT1_4_CHIP_ID    0x53393431
+#define CAMERA_VD5943_ADDRESS   0x20U
 
 typedef struct
 {
   uint16_t Address;
   VD1943_Ctx_t  ctx_driver;
+#if !defined (CMW_USE_WITHOUT_ISP)
   ISP_HandleTypeDef hIsp;
-  ISP_AppliHelpersTypeDef appliHelpers;
+#endif
   DCMIPP_HandleTypeDef *hdcmipp;
   uint8_t IsInitialized;
   int32_t (*Init)(void);
@@ -51,8 +55,15 @@ typedef struct
   void (*EnablePin)(int value);
 } CMW_VD5943_t;
 
-int CMW_VD5943_Probe(CMW_VD5943_t *io_ctx, CMW_Sensor_if_t *vd5943_if);
-void CMW_VD5943_SetDefaultSensorValues(CMW_VD5943_config_t *vd5943_config);
+typedef struct
+{
+  CMW_PixelFormat_t pixel_format; /*!< This parameter can be a value from @ref CMW_PIXEL_FORMAT */
+  uint32_t CSI_PHYBitrate;
+} CMW_VD5943_config_t;
+
+int32_t CMW_CAMERA_VD5943_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                               CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP);
+void CMW_VD5943_SetDefaultSensorValues(void *sensor_config);
 
 #ifdef __cplusplus
 }

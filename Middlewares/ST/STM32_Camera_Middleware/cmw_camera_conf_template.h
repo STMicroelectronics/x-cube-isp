@@ -37,6 +37,15 @@ extern "C" {
 #endif
 
 
+/* ########################### ISP invocation ############################### */
+/**
+  * @brief By default, CMW automatically chains the ISP middleware during its workflow.
+  * Uncomment the following directive to disable the automatic ISP chaining.
+  * When CMW_USE_WITHOUT_ISP is defined, CMW does not call ISP, and any interaction with ISP
+  * must be handled directly by the application.
+  */
+/* #define CMW_USE_WITHOUT_ISP */
+
 
 /* ########################## Module Selection ############################## */
 /**
@@ -48,6 +57,7 @@ extern "C" {
 #define USE_VD55G1_SENSOR
 #define USE_VD65G4_SENSOR
 #define USE_VD1943_SENSOR
+#define USE_IMX477_SENSOR
 
 
 #ifdef __cplusplus

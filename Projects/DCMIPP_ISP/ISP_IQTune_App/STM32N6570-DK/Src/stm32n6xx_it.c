@@ -159,7 +159,6 @@ void LTDC_LO_IRQHandler(void)
   HAL_LTDC_IRQHandler(&hlcd_ltdc);
 }
 
-#ifdef ISP_MW_TUNING_TOOL_SUPPORT
 /**
   * @brief  This function handles USB Device (event buffer) interrupt request.
   * @param  None
@@ -169,4 +168,3 @@ void USB1_OTG_HS_IRQHandler(void)
 {
   HAL_PCD_IRQHandler(&usbx_pcd_handle);
 }
-#endif

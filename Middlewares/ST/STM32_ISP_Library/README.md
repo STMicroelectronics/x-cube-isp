@@ -1,6 +1,6 @@
 # STM32 ISP Library
 
-![latest tag](https://img.shields.io/badge/tag-2.0.2-blue)
+![latest tag](https://img.shields.io/badge/tag-2.1.0-blue)
 
 The ISP Library middleware (running on the target) hosts 2A algorithms
 (Auto Exposure and Auto White Balance) and mechanisms to control the
@@ -19,8 +19,18 @@ ISP_MW_TUNING_TOOL_SUPPORT must be enabled.
 
 ## Enhancements, new features
 
-- Changed UVC name (the UVC camera might need to be reinstalled)
-- Minor update
+- **Support for camera > 5 MP**
+- **New tuning parameters** are available for:
+  - VD65G4
+  - VD66GY
+  - VD1943
+  - IMX477 (New supported Camera)
+- Update to HAL 1.4.0
+- **Enhance 2A algos with a new convergence speed parameter**
+- Double buffering to avoid tearing
+- Add Preview app which only shows an example on how to use the CMW + ISP in a simple application
+- Some Bug fixes
+- Use An FSBL for boot from flash mode (see [Doc/Boot-Overview.md](Doc/Boot-Overview.md))
 
 ## Compatibility
 

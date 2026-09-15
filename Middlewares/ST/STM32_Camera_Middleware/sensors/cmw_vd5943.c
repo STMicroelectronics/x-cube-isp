@@ -23,8 +23,10 @@
 #include <stddef.h>
 #include <string.h>
 #include "cmw_camera.h"
+#include "cmw_io.h"
+#include "cmw_utils.h"
 #include "vd1943.h"
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
 #include "isp_param_conf.h"
 #endif
 
@@ -207,6 +209,7 @@ static int CMW_VD5943_GetResType(uint32_t width, uint32_t height, VD1943_Res_t *
   {
     return CMW_ERROR_WRONG_PARAM;
   }
+
   return 0;
 }
 
@@ -230,7 +233,7 @@ static int32_t CMW_VD5943_getMirrorFlipConfig(uint32_t Config)
   }
 }
 
-static int32_t CMW_VD5943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
+static int32_t CMW_VD5943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor, void *p_appliHelpers_ISP)
 {
   VD1943_Config_t config = { 0 };
   int ret;
@@ -238,10 +241,7 @@ static int32_t CMW_VD5943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
   VD1943_MODE_t mode;
   CMW_VD5943_config_t *sensor_config;
   sensor_config = (CMW_VD5943_config_t*)(initSensor->sensor_config);
-  if (sensor_config == NULL)
-  {
-    return CMW_ERROR_WRONG_PARAM;
-  }
+  assert(sensor_config != NULL);
 
   if (((CMW_VD5943_t *)io_ctx)->IsInitialized)
   {
@@ -321,31 +321,41 @@ static int32_t CMW_VD5943_Init(void *io_ctx, CMW_Sensor_Init_t *initSensor)
 
   ((CMW_VD5943_t *)io_ctx)->IsInitialized = 1;
 
+#if !defined (CMW_USE_WITHOUT_ISP)
+  /* Statistic area is provided with null value so that it force the ISP Library to get the statistic
+    * area information from the tuning file.
+    */
+  (void) ISP_IQParamCacheInit; /* unused */
+  ret = ISP_Init(&((CMW_VD5943_t *)io_ctx)->hIsp, ((CMW_VD5943_t *)io_ctx)->hdcmipp, 0, (ISP_AppliHelpersTypeDef *)p_appliHelpers_ISP, &ISP_IQParamCacheInit_VD5943);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = ISP_SetAEConvergenceSpeed(&((CMW_VD5943_t *)io_ctx)->hIsp, ISP_AE_CONVERGENCESPEED_MEDIUM);
+  if (ret != ISP_OK)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+#endif
+
   return CMW_ERROR_NONE;
 }
 
-void CMW_VD5943_SetDefaultSensorValues(CMW_VD5943_config_t *vd5943_config)
+void CMW_VD5943_SetDefaultSensorValues(void *sensor_config)
 {
-  assert(vd5943_config != NULL);
+  assert(sensor_config != NULL);
+  CMW_VD5943_config_t *vd5943_config = (CMW_VD5943_config_t *)sensor_config;
   vd5943_config->CSI_PHYBitrate = VD1943_DEFAULT_DATARATE;
   vd5943_config->pixel_format = CMW_PIXEL_FORMAT_RAW10;
 }
 
 static int32_t CMW_VD5943_Start(void *io_ctx)
 {
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
-  /* Statistic area is provided with null value so that it force the ISP Library to get the statistic
-   * area information from the tuning file.
-   */
-  (void) ISP_IQParamCacheInit; /* unused */
-  ret = ISP_Init(&((CMW_VD5943_t *)io_ctx)->hIsp, ((CMW_VD5943_t *)io_ctx)->hdcmipp, 0, &((CMW_VD5943_t *)io_ctx)->appliHelpers, &ISP_IQParamCacheInit_VD5943);
-  if (ret != ISP_OK)
-  {
-    return CMW_ERROR_COMPONENT_FAILURE;
-  }
-
+#if !defined (CMW_USE_WITHOUT_ISP)
   ret = ISP_Start(&((CMW_VD5943_t *)io_ctx)->hIsp);
   if (ret != ISP_OK)
   {
@@ -353,42 +363,47 @@ static int32_t CMW_VD5943_Start(void *io_ctx)
   }
 #endif
 
-  ret = VD1943_Start(&((CMW_VD5943_t *)io_ctx)->ctx_driver);
+
+  ret = VD1943_Start(&vd5943_ctx->ctx_driver);
   if (ret) {
-    VD1943_DeInit(&((CMW_VD5943_t *)io_ctx)->ctx_driver);
+    VD1943_DeInit(&vd5943_ctx->ctx_driver);
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD5943_Run(void *io_ctx)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
   int ret;
-  ret = ISP_BackgroundProcess(&((CMW_VD5943_t *)io_ctx)->hIsp);
+  ret = ISP_BackgroundProcess(&vd5943_ctx->hIsp);
   if (ret != ISP_OK)
   {
       return CMW_ERROR_PERIPH_FAILURE;
   }
 #endif
+
   return CMW_ERROR_NONE;
 }
 
 static void CMW_VD5943_VsyncEventCallback(void *io_ctx, uint32_t pipe)
 {
-#ifndef ISP_MW_TUNING_TOOL_SUPPORT
+#if !defined (CMW_USE_WITHOUT_ISP)
   /* Update the ISP frame counter and call its statistics handler */
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
   switch (pipe)
   {
     case DCMIPP_PIPE0 :
-      ISP_IncDumpFrameId(&((CMW_VD5943_t *)io_ctx)->hIsp);
+      ISP_IncDumpFrameId(&vd5943_ctx->hIsp);
       break;
     case DCMIPP_PIPE1 :
-      ISP_IncMainFrameId(&((CMW_VD5943_t *)io_ctx)->hIsp);
-      ISP_GatherStatistics(&((CMW_VD5943_t *)io_ctx)->hIsp);
+      ISP_IncMainFrameId(&vd5943_ctx->hIsp);
+      ISP_GatherStatistics(&vd5943_ctx->hIsp);
       break;
     case DCMIPP_PIPE2 :
-      ISP_IncAncillaryFrameId(&((CMW_VD5943_t *)io_ctx)->hIsp);
+      ISP_IncAncillaryFrameId(&vd5943_ctx->hIsp);
       break;
   }
 #endif
@@ -401,32 +416,38 @@ static void CMW_VD5943_FrameEventCallback(void *io_ctx, uint32_t pipe)
 static int32_t CMW_VD5943_Stop(void *io_ctx)
 {
   int ret = CMW_ERROR_NONE;
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
 
-  ret = VD1943_Stop(&((CMW_VD5943_t *)io_ctx)->ctx_driver);
+  ret = VD1943_Stop(&vd5943_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
+
   return CMW_ERROR_NONE;
 }
 
 static int32_t CMW_VD5943_DeInit(void *io_ctx)
 {
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
   int ret = CMW_ERROR_NONE;
 
-  ret = VD1943_Stop(&((CMW_VD5943_t *)io_ctx)->ctx_driver);
+#if !defined (CMW_USE_WITHOUT_ISP)
+  ret = ISP_DeInit(&vd5943_ctx->hIsp);
+  if (ret)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+#endif
+
+  ret = VD1943_DeInit(&vd5943_ctx->ctx_driver);
   if (ret)
   {
     return CMW_ERROR_PERIPH_FAILURE;
   }
 
-  ret = VD1943_DeInit(&((CMW_VD5943_t *)io_ctx)->ctx_driver);
-  if (ret)
-  {
-    return CMW_ERROR_PERIPH_FAILURE;
-  }
+  vd5943_ctx->IsInitialized = 0;
 
-  ((CMW_VD5943_t *)io_ctx)->IsInitialized = 0;
   return CMW_ERROR_NONE;
 }
 
@@ -436,8 +457,9 @@ static int32_t CMW_VD5943_DeInit(void *io_ctx)
   * @param  Gain Gain in mdB
   * @retval Component status
   */
-int32_t CMW_VD5943_SetGain(void *io_ctx, int32_t gain)
+static int32_t CMW_VD5943_SetGain(void *io_ctx, int32_t gain)
 {
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
   int32_t ret;
   uint32_t again_min_mdB, again_max_mdB;
   uint32_t dgain_min_mdB, dgain_max_mdB;
@@ -472,11 +494,11 @@ int32_t CMW_VD5943_SetGain(void *io_ctx, int32_t gain)
     digital_linear_gain = MDECIBEL_TO_LINEAR((double)(gain - again_max_mdB));
   }
 
-  ret = VD1943_SetAnalogGain(&((CMW_VD5943_t *)io_ctx)->ctx_driver, again_reg);
+  ret = VD1943_SetAnalogGain(&vd5943_ctx->ctx_driver, again_reg);
   if (ret)
     return ret;
 
-  ret = VD1943_SetDigitalGain(&((CMW_VD5943_t *)io_ctx)->ctx_driver, FLOAT_TO_FP58(digital_linear_gain));
+  ret = VD1943_SetDigitalGain(&vd5943_ctx->ctx_driver, FLOAT_TO_FP58(digital_linear_gain));
   if (ret)
     return ret;
 
@@ -489,9 +511,11 @@ int32_t CMW_VD5943_SetGain(void *io_ctx, int32_t gain)
   * @param  Exposure Exposure in micro seconds
   * @retval Component status
   */
-int32_t CMW_VD5943_SetExposure(void *io_ctx, int32_t exposure)
+static int32_t CMW_VD5943_SetExposure(void *io_ctx, int32_t exposure)
 {
-  return VD1943_SetExpo(&((CMW_VD5943_t *)io_ctx)->ctx_driver, exposure);
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
+
+  return VD1943_SetExpo(&vd5943_ctx->ctx_driver, exposure);
 }
 
 /**
@@ -500,8 +524,9 @@ int32_t CMW_VD5943_SetExposure(void *io_ctx, int32_t exposure)
   * @param  pInfo pointer to sensor info structure
   * @retval Component status
   */
-int32_t CMW_VD5943_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
+static int32_t CMW_VD5943_GetSensorInfo(void *io_ctx, CMW_Sensor_Info_t *info)
 {
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)io_ctx;
   uint32_t again_min_mdB, again_max_mdB;
   uint32_t dgain_min_mdB, dgain_max_mdB;
   unsigned int min_us, max_us, pixel_depth;
@@ -525,11 +550,11 @@ int32_t CMW_VD5943_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
     return CMW_ERROR_WRONG_PARAM;
   }
 
-  /* Isp bayer pattern info */
-  info->bayer_pattern = 0x04; /* Monochrome */
+  /* Bayer pattern info */
+  info->bayer_pattern = CMW_BAYER_PATTERN_MONO;
 
   /* Pixel depth */
-  ret = VD1943_GetPixelDepth(&((CMW_VD5943_t *)io_ctx)->ctx_driver, &pixel_depth);
+  ret = VD1943_GetPixelDepth(&vd5943_ctx->ctx_driver, &pixel_depth);
   if (ret)
   {
     pixel_depth = INVALID_PIXEL_DEPTH;
@@ -551,7 +576,7 @@ int32_t CMW_VD5943_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
   info->again_max = again_max_mdB;
 
   /* Get exposure range */
-  ret = VD1943_GetExposureRange(&((CMW_VD5943_t *)io_ctx)->ctx_driver, &min_us, &max_us);
+  ret = VD1943_GetExposureRange(&vd5943_ctx->ctx_driver, &min_us, &max_us);
   if (ret)
   {
     min_us = INVALID_MIN_US;
@@ -563,7 +588,18 @@ int32_t CMW_VD5943_GetSensorInfo(void *io_ctx, ISP_SensorInfoTypeDef *info)
   return CMW_ERROR_NONE;
 }
 
-int32_t VD5943_RegisterBusIO(CMW_VD5943_t *io_ctx)
+static int32_t CMW_VD5943_GetIspDecimationRatio(void *io_ctx, int32_t *ratio_h, int32_t *ratio_v)
+{
+#if !defined (CMW_USE_WITHOUT_ISP)
+  CMW_VD5943_t *ctx = (CMW_VD5943_t *) io_ctx;
+
+  return CMW_UTILS_GetIspDecimationRatio_WithIsp(&ctx->hIsp, ratio_h, ratio_v);
+#else
+  return CMW_UTILS_GetIspDecimationRatio_NoIsp(ratio_h, ratio_v);
+#endif
+}
+
+static int32_t VD5943_RegisterBusIO(CMW_VD5943_t *io_ctx)
 {
   int ret;
 
@@ -578,7 +614,7 @@ int32_t VD5943_RegisterBusIO(CMW_VD5943_t *io_ctx)
   return ret;
 }
 
-int32_t VD5943_ReadID(CMW_VD5943_t *io_ctx, uint32_t *Id)
+static int32_t VD5943_ReadID(CMW_VD5943_t *io_ctx, uint32_t *Id)
 {
   uint32_t reg32;
   int32_t ret;
@@ -604,7 +640,7 @@ static void CMW_VD5943_PowerOn(CMW_VD5943_t *io_ctx)
 	HAL_Delay(20);     /* NRST de-asserted during 20ms */
 }
 
-int CMW_VD5943_Probe(CMW_VD5943_t *io_ctx, CMW_Sensor_if_t *vd5943_if)
+static int CMW_VD5943_Probe(CMW_VD5943_t *io_ctx, CMW_Sensor_if_t *vd5943_if)
 {
   int ret = CMW_ERROR_NONE;
   uint32_t id;
@@ -639,7 +675,6 @@ int CMW_VD5943_Probe(CMW_VD5943_t *io_ctx, CMW_Sensor_if_t *vd5943_if)
   }
 
   memset(vd5943_if, 0, sizeof(*vd5943_if));
-  vd5943_if->Init = CMW_VD5943_Init;
   vd5943_if->DeInit = CMW_VD5943_DeInit;
   vd5943_if->Run = CMW_VD5943_Run;
   vd5943_if->VsyncEventCallback = CMW_VD5943_VsyncEventCallback;
@@ -649,6 +684,123 @@ int CMW_VD5943_Probe(CMW_VD5943_t *io_ctx, CMW_Sensor_if_t *vd5943_if)
   vd5943_if->SetGain = CMW_VD5943_SetGain;
   vd5943_if->SetExposure = CMW_VD5943_SetExposure;
   vd5943_if->GetSensorInfo = CMW_VD5943_GetSensorInfo;
+  vd5943_if->GetIspDecimationRatio = CMW_VD5943_GetIspDecimationRatio;
 
   return ret;
+}
+
+static void CMW_VD5943_ShutdownPin(int value)
+{
+  HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void CMW_VD5943_EnablePin(int value)
+{
+  HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+int32_t CMW_CAMERA_VD5943_Init(CMW_Sensor_if_t *camera_drv, void *sensor_ctx,  DCMIPP_HandleTypeDef *hdcmipp,
+                              CMW_Sensor_Init_t *initSensors_params, void *p_appliHelpers_ISP)
+{
+  int32_t ret = CMW_ERROR_NONE;
+  DCMIPP_CSI_ConfTypeDef csi_conf = { 0 };
+  DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe_conf = { 0 };
+  uint32_t dt_format = 0;
+  uint32_t dt = 0;
+  CMW_VD5943_config_t default_sensor_config;
+  int32_t csi_phybitrate_i = -1;
+  CMW_VD5943_config_t *sensor_config;
+  CMW_VD5943_t *vd5943_ctx = (CMW_VD5943_t *)sensor_ctx;
+
+  memset(vd5943_ctx, 0, sizeof(*vd5943_ctx));
+  vd5943_ctx->Address     = CAMERA_VD5943_ADDRESS;
+  vd5943_ctx->Init        = CMW_I2C_INIT;
+  vd5943_ctx->DeInit      = CMW_I2C_DEINIT;
+  vd5943_ctx->WriteReg    = CMW_I2C_WRITEREG16;
+  vd5943_ctx->ReadReg     = CMW_I2C_READREG16;
+  vd5943_ctx->Delay       = HAL_Delay;
+  vd5943_ctx->ShutdownPin = CMW_VD5943_ShutdownPin;
+  vd5943_ctx->EnablePin   = CMW_VD5943_EnablePin;
+  vd5943_ctx->hdcmipp     = hdcmipp;
+
+  ret = CMW_VD5943_Probe(vd5943_ctx, camera_drv);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  /* Special case: when resolution is not specified take the full sensor resolution */
+  if ((initSensors_params->width == 0) || (initSensors_params->height == 0))
+  {
+    CMW_Sensor_Info_t sensor_info;
+    camera_drv->GetSensorInfo(vd5943_ctx, &sensor_info);
+    initSensors_params->width = sensor_info.width;
+    initSensors_params->height = sensor_info.height;
+  }
+
+  CMW_VD5943_SetDefaultSensorValues(&default_sensor_config);
+  initSensors_params->sensor_config = initSensors_params->sensor_config ? initSensors_params->sensor_config : &default_sensor_config;
+  sensor_config = (CMW_VD5943_config_t*) (initSensors_params->sensor_config);
+
+
+  csi_phybitrate_i = CMW_UTILS_getClosest_HAL_PHYBitrate(sensor_config->CSI_PHYBitrate);
+  if (csi_phybitrate_i < 0)
+  {
+    return CMW_ERROR_WRONG_PARAM;
+  }
+
+  csi_conf.NumberOfLanes = DCMIPP_CSI_TWO_DATA_LANES;
+  csi_conf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
+  csi_conf.PHYBitrate = CMW_UTILS_getClosest_HAL_PHYBitrate(sensor_config->CSI_PHYBitrate);
+  ret = HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csi_conf);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  switch (sensor_config->pixel_format)
+  {
+    case CMW_PIXEL_FORMAT_RAW8:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP8;
+      dt = DCMIPP_DT_RAW8;
+      break;
+    }
+    case CMW_PIXEL_FORMAT_RAW10:
+    case CMW_PIXEL_FORMAT_DEFAULT:
+    {
+      dt_format = DCMIPP_CSI_DT_BPP10;
+      dt = DCMIPP_DT_RAW10;
+      break;
+    }
+    default:
+      return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  ret = HAL_DCMIPP_CSI_SetVCConfig(hdcmipp, DCMIPP_VIRTUAL_CHANNEL0, dt_format);
+  if (ret != HAL_OK)
+  {
+    return CMW_ERROR_PERIPH_FAILURE;
+  }
+
+  csi_pipe_conf.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+  csi_pipe_conf.DataTypeIDA = dt;
+  csi_pipe_conf.DataTypeIDB = 0;
+  /* Pre-initialize CSI config for all the pipes */
+  for (uint32_t i = DCMIPP_PIPE0; i <= DCMIPP_PIPE2; i++)
+  {
+    ret = HAL_DCMIPP_CSI_PIPE_SetConfig(hdcmipp, i, &csi_pipe_conf);
+    if (ret != HAL_OK)
+    {
+      return CMW_ERROR_PERIPH_FAILURE;
+    }
+  }
+
+  ret = CMW_VD5943_Init(vd5943_ctx, initSensors_params, p_appliHelpers_ISP);
+  if (ret != CMW_ERROR_NONE)
+  {
+    return CMW_ERROR_COMPONENT_FAILURE;
+  }
+
+  return CMW_ERROR_NONE;
 }

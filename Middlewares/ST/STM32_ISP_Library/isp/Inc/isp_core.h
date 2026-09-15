@@ -289,16 +289,33 @@ typedef enum
   ANTIFLICKER_60HZ = 60,
 } ISP_AntiFlickerTypeDef;
 
+typedef enum
+{
+  ISP_AE_CONVERGENCESPEED_VERY_FAST = 0U,
+  ISP_AE_CONVERGENCESPEED_FAST = 1U,
+  ISP_AE_CONVERGENCESPEED_MEDIUM = 2U,
+  ISP_AE_CONVERGENCESPEED_SLOW = 3U,
+} ISP_AE_ConvergenceSpeedTypeDef;
+
 typedef struct
 {
   uint8_t enable;                               /* Enable or disable */
   ISP_ExposureCompTypeDef exposureCompensation; /* Exposure Compensation (in EV) */
   uint32_t exposureTarget;                      /* Exposure Target */
   ISP_AntiFlickerTypeDef antiFlickerFreq;       /* AntiFlicker frequency (50Hz, 60Hz or 0 for disabling the feature */
+  ISP_AE_ConvergenceSpeedTypeDef convergenceSpeed; /* Convergence speed of the AE algorithm */
 } ISP_AECAlgoTypeDef;
 
 #define ISP_AWB_COLORTEMP_REF               (5U)
 #define ISP_AWB_PROFILE_ID_MAX_LENGTH      (32U)
+
+typedef enum
+{
+  ISP_AWB_CONVERGENCESPEED_VERY_FAST = 0U,
+  ISP_AWB_CONVERGENCESPEED_FAST = 1U,
+  ISP_AWB_CONVERGENCESPEED_MEDIUM = 2U,
+  ISP_AWB_CONVERGENCESPEED_SLOW = 3U,
+} ISP_AWB_ConvergenceSpeedTypeDef;
 
 typedef struct
 {
@@ -310,6 +327,7 @@ typedef struct
   uint32_t ispGainB[ISP_AWB_COLORTEMP_REF];   /* Array of gains of the blue component */
   int32_t coeff[ISP_AWB_COLORTEMP_REF][3][3]; /* Array of 3x3 RGB to RGB matrix coefficients. Unit = 100000000 for "x1.0", -150000000 for "x-1.5". Range is "x-4.0" to "x4.0" */
   uint8_t referenceRGB[ISP_AWB_COLORTEMP_REF][3]; /* Array of reference RGB components */
+  ISP_AWB_ConvergenceSpeedTypeDef convergenceSpeed; /* Convergence speed of the AWB algorithm */
 } ISP_AWBAlgoTypeDef;
 
 typedef struct
@@ -477,6 +495,7 @@ typedef struct
   uint32_t AncillaryPipe_FrameCount;
   uint32_t DumpPipe_FrameCount;
   ISP_SensorInfoTypeDef sensorInfo;
+  bool isInitialized;
 } ISP_HandleTypeDef;
 
 /* Exported constants --------------------------------------------------------*/
@@ -490,6 +509,7 @@ typedef struct
 #define ISP_STATWINDOW_MAX                  (4094U)
 #define ISP_STATWINDOW_MIN                  (4U)
 #define ISP_AWB_ENABLE_RECONFIGURE          (255U)
+#define ISP_LUXREF_UNTUNED                  (0U)
 
 /* A well exposed picture (taking into account the gamma correction) has its
  * Luminance average at the middle of the luminance range.

@@ -37,6 +37,7 @@ extern "C" {
 #define CMW_ERROR_CLOCK_FAILURE          -9
 #define CMW_ERROR_MSP_FAILURE            -10
 #define CMW_ERROR_FEATURE_NOT_SUPPORTED  -11
+#define CMW_ERROR_ALREADY_INITIALIZED    -12
 
 /* CMW XSPI error codes */
 #define CMW_ERROR_XSPI_SUSPENDED          -20

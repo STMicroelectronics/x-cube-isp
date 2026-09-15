@@ -149,7 +149,7 @@ HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
   RCC_OscInitStruct.PLL3.PLLState       = RCC_PLL_NONE;
   RCC_OscInitStruct.PLL4.PLLState       = RCC_PLL_NONE;
   RCC_OscInitStruct.HSEState            = RCC_HSE_ON;
-  PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_HSE_DIV32;
+  PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_HSE_DIV1024;
 #else
 #error Please select the RTC Clock source
 #endif /* RTC_CLOCK_SOURCE_LSE */

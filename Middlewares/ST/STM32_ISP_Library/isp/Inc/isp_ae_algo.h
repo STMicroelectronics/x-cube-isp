@@ -28,6 +28,9 @@
 /* Exported functions ------------------------------------------------------- */
 void isp_ae_init(ISP_HandleTypeDef *hIsp);
 void isp_ae_get_new_exposure(uint32_t lux, uint32_t averageL, uint32_t *pExposure, uint32_t *pGain, uint32_t curExposure, uint32_t curGain);
+void isp_ae_get_new_exposure_ratio(uint32_t averageL, double convSpeedExp,
+								   uint32_t *pExposure, uint32_t *pGain,
+								   uint32_t curExposure, uint32_t curGain);
 
 /* Exported variables --------------------------------------------------------*/
 

@@ -19,9 +19,10 @@
  */
 
 /* Let Camera Middleware handle this for simple preview application */
-#ifdef ISP_MW_TUNING_TOOL_SUPPORT
 /* Includes ------------------------------------------------------------------*/
 #include "isp_api.h"
+#include "app.h"
+#include "cmw_camera.h"
 
 /* Private types -------------------------------------------------------------*/
 /* Private constants ---------------------------------------------------------*/
@@ -37,9 +38,8 @@ extern ISP_HandleTypeDef hIsp;
  * @param  Pipe  Pipe receiving the callback
  * @retval None
  */
-void CMW_CAMERA_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp, uint32_t Pipe)
+int CMW_CAMERA_PIPE_VsyncEventCallback(uint32_t Pipe)
 {
-  UNUSED(hdcmipp);
   /* Update the frame counter and call the ISP statistics handler */
   if (Pipe == DCMIPP_PIPE1 )
   {
@@ -49,6 +49,7 @@ void CMW_CAMERA_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp, uint32_t 
     ISP_OutputMeta(&hIsp);
   }
   /* Additional applicative processing can be implemented from here */
+  return 0;
 }
 
 /**
@@ -56,8 +57,10 @@ void CMW_CAMERA_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp, uint32_t 
  * @param  Pipe  Pipe receiving the callback
  * @retval None
  */
-void CMW_CAMERA_PIPE_FrameEventCallback(uint32_t Pipe)
+int CMW_CAMERA_PIPE_FrameEventCallback(uint32_t Pipe)
 {
+  main_PreviewPipeFrameEvent(Pipe);
+
   /* Update the frame counter for the pipes used to dump the frame */
   switch (Pipe)
   {
@@ -71,5 +74,5 @@ void CMW_CAMERA_PIPE_FrameEventCallback(uint32_t Pipe)
       break;
   }
   /* Additional applicative processing can be implemented from here */
+  return 0;
 }
-#endif /* ISP_MW_TUNING_TOOL_SUPPORT */

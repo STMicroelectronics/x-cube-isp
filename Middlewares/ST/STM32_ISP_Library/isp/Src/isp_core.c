@@ -59,6 +59,7 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
                            const ISP_IQParamTypeDef *ISP_IQParamCacheInit)
 {
   ISP_StatusTypeDef ret;
+  ISP_IQParamTypeDef *IQParamConfig;
 
   if ((hIsp == NULL) || (hDcmipp == NULL) || (pAppliHelpers == NULL))
   {
@@ -66,10 +67,6 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
   }
 
   memset(hIsp, 0, sizeof(*hIsp));
-
-#ifdef ISP_MW_TUNING_TOOL_SUPPORT
-  ISP_ToolCom_Init();
-#endif
 
   hIsp->hDcmipp = hDcmipp;
   hIsp->cameraInstance = CameraInstance;
@@ -111,6 +108,11 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
   {
     return ret;
   }
+
+  /* Default AE and AWB convergence speeds are controlled by core API, not by IQ param config. */
+  IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
+  IQParamConfig->AECAlgo.convergenceSpeed = ISP_AE_CONVERGENCESPEED_VERY_FAST;
+  IQParamConfig->AWBAlgo.convergenceSpeed = ISP_AWB_CONVERGENCESPEED_VERY_FAST;
 
   /* Set decimation configuration */
   /* Get Sensor Info */
@@ -159,6 +161,8 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
   /* Initialize the statistic engine */
   ISP_SVC_Stats_Init(hIsp);
 
+  hIsp->isInitialized = true;
+
   return ISP_OK;
 }
 
@@ -175,6 +179,11 @@ ISP_StatusTypeDef ISP_DeInit(ISP_HandleTypeDef *hIsp)
   if (hIsp == NULL)
   {
     return ISP_ERR_EINVAL;
+  }
+
+  if (hIsp->isInitialized != true)
+  {
+    return ISP_OK;
   }
 
   /* DeInitialize algorithms */
@@ -290,18 +299,30 @@ ISP_StatusTypeDef ISP_Start(ISP_HandleTypeDef *hIsp)
   }
 
   /* Configure statistic area if not already configured by ISP_SetStatArea() */
+  ISP_DecimationTypeDef decimation;
+  ISP_GetDecimationFactor(hIsp, &decimation);
   if ((hIsp->statArea.XSize == 0) || (hIsp->statArea.YSize == 0))
   {
     if ((IQParamConfig->statAreaStatic.XSize == 0) || (IQParamConfig->statAreaStatic.XSize == ISP_STATWINDOW_MAX))
     {
       /* Configure static area width to the maximum value */
-      IQParamConfig->statAreaStatic.XSize = hIsp->sensorInfo.width - IQParamConfig->statAreaStatic.X0;
+      IQParamConfig->statAreaStatic.X0 = 0;
+      IQParamConfig->statAreaStatic.XSize = hIsp->sensorInfo.width;
     }
 
     if ((IQParamConfig->statAreaStatic.YSize == 0) || (IQParamConfig->statAreaStatic.YSize == ISP_STATWINDOW_MAX))
     {
       /* Configure static area height to the maximum value */
-      IQParamConfig->statAreaStatic.YSize = hIsp->sensorInfo.height - IQParamConfig->statAreaStatic.Y0;
+      IQParamConfig->statAreaStatic.Y0 = 0;
+      IQParamConfig->statAreaStatic.YSize = hIsp->sensorInfo.height;
+    }
+
+    if (decimation.factor > 1)
+    {
+      IQParamConfig->statAreaStatic.X0 /= decimation.factor;
+      IQParamConfig->statAreaStatic.Y0 /= decimation.factor;
+      IQParamConfig->statAreaStatic.XSize /= decimation.factor;
+      IQParamConfig->statAreaStatic.YSize /= decimation.factor;
     }
 
     /* Configure statistic area from IQ params */
@@ -466,6 +487,50 @@ ISP_StatusTypeDef ISP_GetAECState(ISP_HandleTypeDef *hIsp, uint8_t *pEnable)
 }
 
 /**
+  * @brief  ISP_SetAEConvergenceSpeed
+  *         Set AEC algorithm convergence speed
+  * @param  hIsp: ISP device handle
+  * @param  convergenceSpeed: convergence speed enum value
+  * @retval Operation status
+  */
+ISP_StatusTypeDef ISP_SetAEConvergenceSpeed(ISP_HandleTypeDef *hIsp, ISP_AE_ConvergenceSpeedTypeDef convergenceSpeed)
+{
+  ISP_IQParamTypeDef *IQParamConfig;
+
+  if ((hIsp == NULL) || (convergenceSpeed > ISP_AE_CONVERGENCESPEED_SLOW))
+  {
+    return ISP_ERR_EINVAL;
+  }
+
+  IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
+  IQParamConfig->AECAlgo.convergenceSpeed = convergenceSpeed;
+
+  return ISP_OK;
+}
+
+/**
+  * @brief  ISP_GetAEConvergenceSpeed
+  *         Get AEC algorithm convergence speed
+  * @param  hIsp: ISP device handle
+  * @param  pConvergenceSpeed: pointer to current convergence speed
+  * @retval Operation status
+  */
+ISP_StatusTypeDef ISP_GetAEConvergenceSpeed(ISP_HandleTypeDef *hIsp, ISP_AE_ConvergenceSpeedTypeDef *pConvergenceSpeed)
+{
+  ISP_IQParamTypeDef *IQParamConfig;
+
+  if ((hIsp == NULL) || (pConvergenceSpeed == NULL))
+  {
+    return ISP_ERR_EINVAL;
+  }
+
+  IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
+  *pConvergenceSpeed = IQParamConfig->AECAlgo.convergenceSpeed;
+
+  return ISP_OK;
+}
+
+/**
   * @brief  ISP_ListWBRefModes
   *         List the reference modes (color temperature) that define a white balance configuration
   * @param  hIsp: ISP device handle
@@ -574,6 +639,50 @@ ISP_StatusTypeDef ISP_GetWBRefMode(ISP_HandleTypeDef *hIsp, uint8_t *pAutomatic,
 
   if (!*pAutomatic)
     ISP_SVC_Misc_GetWBRefMode(hIsp, pRefColorTemp);
+
+  return ISP_OK;
+}
+
+/**
+  * @brief  ISP_SetAWBConvergenceSpeed
+  *         Set AWB algorithm convergence speed
+  * @param  hIsp: ISP device handle
+  * @param  convergenceSpeed: convergence speed enum value
+  * @retval Operation status
+  */
+ISP_StatusTypeDef ISP_SetAWBConvergenceSpeed(ISP_HandleTypeDef *hIsp, ISP_AWB_ConvergenceSpeedTypeDef convergenceSpeed)
+{
+  ISP_IQParamTypeDef *IQParamConfig;
+
+  if ((hIsp == NULL) || (convergenceSpeed > ISP_AWB_CONVERGENCESPEED_SLOW))
+  {
+    return ISP_ERR_EINVAL;
+  }
+
+  IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
+  IQParamConfig->AWBAlgo.convergenceSpeed = convergenceSpeed;
+
+  return ISP_OK;
+}
+
+/**
+  * @brief  ISP_GetAWBConvergenceSpeed
+  *         Get AWB algorithm convergence speed
+  * @param  hIsp: ISP device handle
+  * @param  pConvergenceSpeed: pointer to current convergence speed
+  * @retval Operation status
+  */
+ISP_StatusTypeDef ISP_GetAWBConvergenceSpeed(ISP_HandleTypeDef *hIsp, ISP_AWB_ConvergenceSpeedTypeDef *pConvergenceSpeed)
+{
+  ISP_IQParamTypeDef *IQParamConfig;
+
+  if ((hIsp == NULL) || (pConvergenceSpeed == NULL))
+  {
+    return ISP_ERR_EINVAL;
+  }
+
+  IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
+  *pConvergenceSpeed = IQParamConfig->AWBAlgo.convergenceSpeed;
 
   return ISP_OK;
 }
@@ -743,8 +852,33 @@ ISP_StatusTypeDef ISP_GetLuxEstimation(ISP_HandleTypeDef *hIsp, uint32_t *pLux)
 {
   ISP_StatusTypeDef ret = ISP_OK;
   ISP_SVC_StatStateTypeDef stats;
+  ISP_IQParamTypeDef *IQParamConfig;
   int32_t lux;
   uint8_t averageL;
+
+  if (pLux == NULL)
+  {
+    return ISP_ERR_EINVAL;
+  }
+
+  /* When the AE lux references are untuned, the lux cannot be estimated. Return 0 with an OK
+     status so that this query is non-blocking for the caller. */
+  IQParamConfig = ISP_SVC_IQParam_Get(hIsp);
+  if ((IQParamConfig->luxRef.HL_LuxRef == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.HL_Expo1 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.HL_Lum1 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.HL_Expo2 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.HL_Lum2 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.LL_LuxRef == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.LL_Expo1 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.LL_Lum1 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.LL_Expo2 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.LL_Lum2 == ISP_LUXREF_UNTUNED) ||
+      (IQParamConfig->luxRef.calibFactor == (float)ISP_LUXREF_UNTUNED))
+  {
+    *pLux = 0;
+    return ISP_OK;
+  }
 
   ret = ISP_SVC_Stats_GetLatest(hIsp, &stats);
   if (ret != ISP_OK)
@@ -765,7 +899,7 @@ ISP_StatusTypeDef ISP_GetLuxEstimation(ISP_HandleTypeDef *hIsp, uint32_t *pLux)
 
   lux = ISP_SVC_Misc_GetEstimatedLux(hIsp, averageL);
 
-  if ((pLux == NULL) || (lux < 0))
+  if (lux < 0)
   {
     ret = ISP_ERR_EINVAL;
   }
